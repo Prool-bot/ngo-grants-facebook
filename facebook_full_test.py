@@ -334,7 +334,8 @@ def api_result(response, service):
         error = result.get("error") or {}
         raise RuntimeError(
             f"{service}: HTTP {response.status_code}; код {error.get('code', 'unknown')}; "
-            f"підкод {error.get('error_subcode', 'none')}"
+            f"підкод {error.get('error_subcode', 'none')}; "
+            + str(error.get("message", "")).replace(FB_TOKEN, "[redacted]")
         )
     return result
 
@@ -346,7 +347,7 @@ def graph(method, path, data=None, files=None):
         data=data if method != "GET" else None,
         files=files, timeout=180, allow_redirects=False,
     )
-    return api_result(response, "Meta")
+    return api_result(response, "Meta " + method + " /" + path)
 
 def download_image(url):
     if urlparse(url).scheme not in ("http", "https"):
@@ -529,7 +530,7 @@ def main():
     REPORT["candidate_count"] = count
     print(f"Дата: {day}; кандидатів: {count}; відібрано: {len(posts)}", flush=True)
 
-    existing_posts = recent_items("feed", "id,message")
+    existing_posts = recent_items("posts", "id,message")
     existing_videos = recent_items("videos", "id,description")
     photos = asyncio.run(telegram_images(posts))
     for post in posts:
@@ -586,4 +587,3 @@ if __name__ == "__main__":
         checkpoint()
         print(str(error) if isinstance(error, RuntimeError) else type(error).__name__, flush=True)
         raise SystemExit(1)
-
