@@ -30,6 +30,7 @@ jobs:
           import os
           from datetime import datetime, timedelta, timezone
           from zoneinfo import ZoneInfo
+
           from telethon import TelegramClient
           from telethon.sessions import StringSession
 
@@ -39,6 +40,7 @@ jobs:
                   "TELEGRAM_API_HASH",
                   "TELEGRAM_SESSION",
               )
+
               for name in names:
                   if not os.environ.get(name, "").strip():
                       raise RuntimeError(f"Missing secret: {name}")
@@ -46,15 +48,23 @@ jobs:
               kyiv = ZoneInfo("Europe/Kyiv")
               today = datetime.now(kyiv).date()
               yesterday = today - timedelta(days=1)
+
               start = datetime.combine(
-                  yesterday, datetime.min.time(), tzinfo=kyiv
+                  yesterday,
+                  datetime.min.time(),
+                  tzinfo=kyiv,
               ).astimezone(timezone.utc)
+
               end = datetime.combine(
-                  today, datetime.min.time(), tzinfo=kyiv
+                  today,
+                  datetime.min.time(),
+                  tzinfo=kyiv,
               ).astimezone(timezone.utc)
 
               client = TelegramClient(
-                  StringSession(os.environ["TELEGRAM_SESSION"].strip()),
+                  StringSession(
+                      os.environ["TELEGRAM_SESSION"].strip()
+                  ),
                   int(os.environ["TELEGRAM_API_ID"].strip()),
                   os.environ["TELEGRAM_API_HASH"].strip(),
                   receive_updates=False,
@@ -62,23 +72,31 @@ jobs:
 
               try:
                   await client.connect()
+
                   if not await client.is_user_authorized():
-                      raise RuntimeError("Telegram session is not authorized")
+                      raise RuntimeError(
+                          "Telegram session is not authorized"
+                      )
 
                   channel = await client.get_entity("ngo_grants")
                   candidates = []
 
                   async for message in client.iter_messages(
-                      channel, offset_date=end
+                      channel,
+                      offset_date=end,
                   ):
                       if message.date < start:
                           break
+
                       if message.date >= end:
                           continue
+
                       if not (message.raw_text or "").strip():
                           continue
+
                       if message.views is None:
                           continue
+
                       candidates.append(message)
 
                   candidates.sort(
@@ -87,15 +105,42 @@ jobs:
                   )
 
                   print(f"Дата відбору за Києвом: {yesterday}")
-                  print(f"Дописів із текстом та переглядами: {len(candidates)}")
+                  print(
+                      "Дописів із текстом та переглядами: "
+                      f"{len(candidates)}"
+                  )
 
-                  for rank, message in enumerate(candidates[:3], start=1):
-                      print(f"\nМІСЦЕ {rank} | Перегляди: {message.views}")
-                      print(f"https://t.me/ngo_grants/{message.id}")
+                  for rank, message in enumerate(
+                      candidates[:3],
+                      start=1,
+                  ):
+                      print(
+                          f"\nМІСЦЕ {rank}"
+                          f" | Перегляди: {message.views}"
+                      )
+                      print(
+                          f"https://t.me/ngo_grants/{message.id}"
+                      )
                       print(message.raw_text)
+
+                      hidden_urls = []
+                      for entity in message.entities or []:
+                          url = getattr(entity, "url", None)
+                          if url and url not in hidden_urls:
+                              hidden_urls.append(url)
+
+                      if hidden_urls:
+                          print("\nПриховані посилання:")
+                          for url in hidden_urls:
+                              print(url)
+
                       print("-" * 60)
 
-                  print("\nПеревірку завершено. У Facebook нічого не опубліковано.")
+                  print(
+                      "\nПеревірку завершено. "
+                      "У Facebook нічого не опубліковано."
+                  )
+
               finally:
                   await client.disconnect()
 
