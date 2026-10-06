@@ -550,7 +550,7 @@ def publish_reel(video, post):
         ):
             raise RuntimeError("Meta повідомила про помилку обробки рілз")
         time.sleep(10)
-    print("Рілз ще обробляється; перевірте його у Facebook пізніше.")
+    raise RuntimeError("Meta не підтвердила завершення публікації рілз за 3 хвилини; перевірте статус перед повторним запуском")
 
 def main():
     checkpoint()
@@ -560,7 +560,10 @@ def main():
     print("Сторінка:", page.get("name"), flush=True)
     day, count, posts = asyncio.run(select_posts())
     if not posts:
-        raise RuntimeError("За попередній день немає дописів")
+        REPORT["stage"] = "no_posts"
+        checkpoint()
+        print("За попередній день немає дописів; публікацію пропущено")
+        return
     REPORT["selection_date"] = str(day)
     REPORT["candidate_count"] = count
     print(f"Дата: {day}; кандидатів: {count}; відібрано: {len(posts)}", flush=True)
@@ -586,6 +589,14 @@ def main():
         print("Джерело зображення:", source["type"], flush=True)
     save_json(OUTPUT / "manifest.json", {"selection_date": str(day), "posts": posts})
     video = make_reel(posts[0])
+    if os.environ.get("PUBLISH_TO_FACEBOOK", "true").lower() != "true":
+        REPORT["stage"] = "preview_ready"
+        REPORT["duplicate_posts"] = sum(any(post["telegram_url"] in (item.get("message") or "") for item in existing_posts) for post in posts)
+        REPORT["duplicate_reel"] = any(posts[0]["telegram_url"] in (item.get("description") or "") for item in existing_videos)
+        checkpoint()
+        print("Перевірку завершено. У Facebook нічого не опубліковано.")
+        print("Уже існує дописів:", REPORT["duplicate_posts"], "рілз:", REPORT["duplicate_reel"])
+        return
     for post in posts:
         old = next((item for item in existing_posts
                     if post["telegram_url"] in (item.get("message") or "")), None)
