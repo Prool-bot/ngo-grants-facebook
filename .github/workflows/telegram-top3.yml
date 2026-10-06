@@ -1,0 +1,103 @@
+name: Telegram TOP 3
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  select:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Telethon
+        run: python -m pip install telethon==1.45.0
+
+      - name: Select yesterday's TOP 3
+        env:
+          TELEGRAM_API_ID: ${{ secrets.TELEGRAM_API_ID }}
+          TELEGRAM_API_HASH: ${{ secrets.TELEGRAM_API_HASH }}
+          TELEGRAM_SESSION: ${{ secrets.TELEGRAM_SESSION }}
+        run: |
+          python - <<'PY'
+          import asyncio
+          import os
+          from datetime import datetime, timedelta, timezone
+          from zoneinfo import ZoneInfo
+          from telethon import TelegramClient
+          from telethon.sessions import StringSession
+
+          async def main():
+              names = (
+                  "TELEGRAM_API_ID",
+                  "TELEGRAM_API_HASH",
+                  "TELEGRAM_SESSION",
+              )
+              for name in names:
+                  if not os.environ.get(name, "").strip():
+                      raise RuntimeError(f"Missing secret: {name}")
+
+              kyiv = ZoneInfo("Europe/Kyiv")
+              today = datetime.now(kyiv).date()
+              yesterday = today - timedelta(days=1)
+              start = datetime.combine(
+                  yesterday, datetime.min.time(), tzinfo=kyiv
+              ).astimezone(timezone.utc)
+              end = datetime.combine(
+                  today, datetime.min.time(), tzinfo=kyiv
+              ).astimezone(timezone.utc)
+
+              client = TelegramClient(
+                  StringSession(os.environ["TELEGRAM_SESSION"].strip()),
+                  int(os.environ["TELEGRAM_API_ID"].strip()),
+                  os.environ["TELEGRAM_API_HASH"].strip(),
+                  receive_updates=False,
+              )
+
+              try:
+                  await client.connect()
+                  if not await client.is_user_authorized():
+                      raise RuntimeError("Telegram session is not authorized")
+
+                  channel = await client.get_entity("ngo_grants")
+                  candidates = []
+
+                  async for message in client.iter_messages(
+                      channel, offset_date=end
+                  ):
+                      if message.date < start:
+                          break
+                      if message.date >= end:
+                          continue
+                      if not (message.raw_text or "").strip():
+                          continue
+                      if message.views is None:
+                          continue
+                      candidates.append(message)
+
+                  candidates.sort(
+                      key=lambda item: (item.views, item.id),
+                      reverse=True,
+                  )
+
+                  print(f"Дата відбору за Києвом: {yesterday}")
+                  print(f"Дописів із текстом та переглядами: {len(candidates)}")
+
+                  for rank, message in enumerate(candidates[:3], start=1):
+                      print(f"\nМІСЦЕ {rank} | Перегляди: {message.views}")
+                      print(f"https://t.me/ngo_grants/{message.id}")
+                      print(message.raw_text)
+                      print("-" * 60)
+
+                  print("\nПеревірку завершено. У Facebook нічого не опубліковано.")
+              finally:
+                  await client.disconnect()
+
+          asyncio.run(main())
+          PY
