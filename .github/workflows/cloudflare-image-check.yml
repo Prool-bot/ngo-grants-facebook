@@ -1,0 +1,153 @@
+name: Cloudflare image check
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Pillow
+        run: python -m pip install Pillow
+
+      - name: Generate test image
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          python - <<'PY'
+          import base64
+          import io
+          import json
+          import os
+          import re
+          import urllib.error
+          import urllib.request
+          from pathlib import Path
+
+          from PIL import Image
+
+          account_id = os.environ.get(
+              "CLOUDFLARE_ACCOUNT_ID", ""
+          ).strip()
+          token = os.environ.get(
+              "CLOUDFLARE_API_TOKEN", ""
+          ).strip()
+
+          if not account_id or not token:
+              raise SystemExit(
+                  "ПОМИЛКА: відсутні секрети Cloudflare."
+              )
+
+          if not re.fullmatch(r"[a-fA-F0-9]{32}", account_id):
+              raise SystemExit(
+                  "ПОМИЛКА: перевірте CLOUDFLARE_ACCOUNT_ID."
+              )
+
+          model = "@cf/black-forest-labs/flux-1-schnell"
+
+          prompt = (
+              "Editorial illustration for an international "
+              "artist residency in California. "
+              "An inviting artist studio with a canvas, "
+              "paintbrushes and notebooks, overlooking "
+              "the Santa Cruz mountains and redwood trees. "
+              "Warm morning sunlight, elegant composition, "
+              "rich teal and golden colors, professional "
+              "cultural magazine aesthetic. "
+              "No text, no letters, no logos, no watermark."
+          )
+
+          request = urllib.request.Request(
+              "https://api.cloudflare.com/client/v4/accounts/"
+              f"{account_id}/ai/run/{model}",
+              data=json.dumps({
+                  "prompt": prompt,
+                  "steps": 4,
+              }).encode("utf-8"),
+              headers={
+                  "Authorization": f"Bearer {token}",
+                  "Content-Type": "application/json",
+              },
+              method="POST",
+          )
+
+          try:
+              with urllib.request.urlopen(
+                  request, timeout=180
+              ) as response:
+                  payload = json.load(response)
+
+          except urllib.error.HTTPError as error:
+              print(f"ПОМИЛКА: HTTP {error.code}")
+              try:
+                  details = json.load(error)
+                  for item in details.get("errors", []):
+                      print(
+                          "Код помилки Cloudflare: "
+                          f"{item.get('code', 'unknown')}"
+                      )
+              except Exception:
+                  pass
+              raise SystemExit(1)
+
+          except urllib.error.URLError:
+              raise SystemExit(
+                  "ПОМИЛКА: не вдалося підключитися до Cloudflare."
+              )
+
+          if payload.get("success") is False:
+              for item in payload.get("errors", []):
+                  print(
+                      "Код помилки Cloudflare: "
+                      f"{item.get('code', 'unknown')}"
+                  )
+              raise SystemExit(
+                  "ПОМИЛКА: Cloudflare відхилив запит."
+              )
+
+          result = payload.get("result") or {}
+          encoded_image = result.get("image")
+
+          if not encoded_image:
+              raise SystemExit(
+                  "ПОМИЛКА: Cloudflare не повернув зображення."
+              )
+
+          if encoded_image.startswith("data:"):
+              encoded_image = encoded_image.split(",", 1)[1]
+
+          image_bytes = base64.b64decode(encoded_image)
+
+          output = Path("output")
+          output.mkdir(exist_ok=True)
+
+          with Image.open(io.BytesIO(image_bytes)) as image:
+              image.load()
+              image.convert("RGB").save(
+                  output / "cloudflare-test.jpg",
+                  quality=95,
+              )
+              print("УСПІХ: зображення створено.")
+              print(f"Розмір: {image.width} × {image.height}")
+
+          print("Файл: cloudflare-test.jpg")
+          print("У Facebook нічого не опубліковано.")
+          PY
+
+      - name: Save test image
+        uses: actions/upload-artifact@v4
+        with:
+          name: cloudflare-test-image
+          path: output/cloudflare-test.jpg
+          if-no-files-found: error
+          retention-days: 7
