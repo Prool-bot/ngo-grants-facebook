@@ -1,0 +1,72 @@
+name: Telegram connection check
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Telethon
+        run: python -m pip install telethon==1.45.0
+
+      - name: Read NGO Grants channel
+        env:
+          TELEGRAM_API_ID: ${{ secrets.TELEGRAM_API_ID }}
+          TELEGRAM_API_HASH: ${{ secrets.TELEGRAM_API_HASH }}
+          TELEGRAM_SESSION: ${{ secrets.TELEGRAM_SESSION }}
+        run: |
+          python - <<'PY'
+          import asyncio
+          import os
+          from telethon import TelegramClient
+
+          from telethon.sessions import StringSession
+
+          async def main():
+              names = (
+                  "TELEGRAM_API_ID",
+                  "TELEGRAM_API_HASH",
+                  "TELEGRAM_SESSION",
+              )
+              for name in names:
+                  if not os.environ.get(name, "").strip():
+                      raise RuntimeError(f"Missing secret: {name}")
+
+              client = TelegramClient(
+                  StringSession(os.environ["TELEGRAM_SESSION"].strip()),
+                  int(os.environ["TELEGRAM_API_ID"].strip()),
+                  os.environ["TELEGRAM_API_HASH"].strip(),
+                  receive_updates=False,
+              )
+              try:
+                  await client.connect()
+                  if not await client.is_user_authorized():
+                      raise RuntimeError("Telegram session is not authorized")
+
+                  channel = await client.get_entity("ngo_grants")
+                  messages = await client.get_messages(channel, limit=5)
+
+                  print("SUCCESS: connected to @ngo_grants")
+                  print(f"Messages received: {len(messages)}")
+                  for message in messages:
+                      print(
+                          f"https://t.me/ngo_grants/{message.id}"
+                          f" | views={message.views}"
+                          f" | date={message.date}"
+                      )
+              finally:
+                  await client.disconnect()
+
+          asyncio.run(main())
+          PY
