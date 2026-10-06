@@ -1,0 +1,62 @@
+name: Facebook check
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Check Facebook Page
+        env:
+          FACEBOOK_PAGE_ACCESS_TOKEN: ${{ secrets.FACEBOOK_PAGE_ACCESS_TOKEN }}
+          FACEBOOK_PAGE_ID: ${{ secrets.FACEBOOK_PAGE_ID }}
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          import urllib.request
+          import urllib.error
+
+          token = os.environ.get("FACEBOOK_PAGE_ACCESS_TOKEN", "").strip()
+          page_id = os.environ.get("FACEBOOK_PAGE_ID", "").strip()
+
+          if not token or not page_id:
+              raise SystemExit("ERROR: Missing Facebook secrets")
+
+          request = urllib.request.Request(
+              "https://graph.facebook.com/v26.0/me?fields=id,name",
+              headers={"Authorization": f"Bearer {token}"},
+          )
+
+          try:
+              with urllib.request.urlopen(request, timeout=30) as response:
+                  page = json.load(response)
+          except urllib.error.HTTPError as error:
+              try:
+                  details = json.load(error).get("error", {})
+              except Exception:
+                  details = {}
+              print(f"ERROR: HTTP {error.code}")
+              print(f"Meta error code: {details.get('code', 'unknown')}")
+              print(f"Meta error subcode: {details.get('error_subcode', 'none')}")
+              raise SystemExit(1)
+          except urllib.error.URLError:
+              raise SystemExit("ERROR: Could not connect to Meta")
+
+          if str(page.get("id")) != page_id:
+              raise SystemExit("ERROR: Token belongs to a different Page")
+
+          print("SUCCESS: Facebook Page token verified")
+          print(f"Page name: {page.get('name')}")
+          print("No posts were published.")
+          PY
