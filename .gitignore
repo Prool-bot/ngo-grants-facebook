@@ -218,3 +218,15 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+# Telegram session files
+*.session
+*.session-journal
+*.session-wal
+*.session-shm
+
+# Local credentials
+.env
+.env.*
+!.env.example
+secrets/
+credentials/
