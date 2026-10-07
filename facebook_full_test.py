@@ -570,6 +570,14 @@ def main():
 
     existing_posts = recent_items("posts", "id,message")
     existing_videos = recent_items("videos", "id,description")
+    if os.environ.get("PUBLISH_TO_FACEBOOK", "true").lower() == "true" and all(
+        any(post["telegram_url"] in (item.get("message") or "") for item in existing_posts)
+        for post in posts
+    ) and any(posts[0]["telegram_url"] in (item.get("description") or "") for item in existing_videos):
+        REPORT["stage"] = "already_published"
+        checkpoint()
+        print("Усі дописи та рілз уже опубліковані; повторний запуск пропущено", flush=True)
+        return
     photos = asyncio.run(telegram_images(posts))
     for post in posts:
         print(f"Підготовка зображення {post['rank']}", flush=True)
