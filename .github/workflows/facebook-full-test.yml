@@ -1,8 +1,8 @@
 name: Facebook daily publication
 on:
   schedule:
-    - cron: '0 10 * * *'
-      timezone: Europe/Kyiv
+    # UTC checks cover Kyiv daylight saving and winter time.
+    - cron: '0,15,30 7,8 * * *'
   workflow_dispatch:
     inputs:
       publish:
@@ -20,17 +20,37 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
+      - name: Check Kyiv publication time
+        id: clock
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          python - <<'PY'
+          import os
+          from datetime import datetime
+          from zoneinfo import ZoneInfo
+          now = datetime.now(ZoneInfo('Europe/Kyiv'))
+          proceed = os.environ['EVENT_NAME'] != 'schedule' or now.hour == 10
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
+              output.write(f'proceed={str(proceed).lower()}\n')
+          print('Kyiv time:', now.isoformat(), 'Proceed:', proceed)
+          PY
       - uses: actions/checkout@v4
+        if: steps.clock.outputs.proceed == 'true'
       - uses: actions/setup-python@v5
+        if: steps.clock.outputs.proceed == 'true'
         with:
           python-version: "3.12"
       - name: Install dependencies
+        if: steps.clock.outputs.proceed == 'true'
         run: python -m pip install requests beautifulsoup4 Pillow telethon==1.45.0
       - name: Install FFmpeg
+        if: steps.clock.outputs.proceed == 'true'
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y ffmpeg
       - name: Prepare and publish three posts and one Reel
+        if: steps.clock.outputs.proceed == 'true'
         env:
           PUBLISH_TO_FACEBOOK: ${{ github.event_name == 'schedule' || inputs.publish }}
           FACEBOOK_PAGE_ID: ${{ secrets.FACEBOOK_PAGE_ID }}
@@ -49,4 +69,3 @@ jobs:
           path: output/
           if-no-files-found: warn
           retention-days: 14
-
