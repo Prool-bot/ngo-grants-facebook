@@ -44,23 +44,25 @@ def save_json(path, value):
     )
 
 def full_text(message):
-    text = (message.raw_text or "").strip()
-    urls = []
-
-    for entity in message.entities or []:
-        url = getattr(entity, "url", None)
-        if (
-            url
-            and url.startswith(("https://", "http://"))
-            and url not in text
-            and url not in urls
-        ):
-            urls.append(url)
-
-    if urls:
-        text += "\n\nПосилання:\n" + "\n".join(urls)
-
-    return text
+    # Telegram entity offsets count UTF-16 units, including two for most emoji.
+    raw = message.raw_text or ""
+    encoded = raw.encode("utf-16-le")
+    insertions = {}
+    seen = set()
+    for entity in sorted(message.entities or [], key=lambda item: item.offset):
+        url = (getattr(entity, "url", None) or "").strip()
+        if not url.startswith(("https://", "http://")) or url in raw or url in seen:
+            continue
+        end = (entity.offset + entity.length) * 2
+        if end < 0 or end > len(encoded):
+            raise ValueError("Invalid Telegram link entity offset")
+        # Keep the descriptive label and expose its target immediately below.
+        insertions.setdefault(end, []).append(url)
+        seen.add(url)
+    for end in sorted(insertions, reverse=True):
+        addition = ("\n" + "\n".join(insertions[end]) + "\n").encode("utf-16-le")
+        encoded = encoded[:end] + addition + encoded[end:]
+    return encoded.decode("utf-16-le").strip()
 
 def get_title(text):
     for line in text.splitlines():
@@ -641,3 +643,4 @@ if __name__ == "__main__":
         checkpoint()
         print(str(error) if isinstance(error, RuntimeError) else type(error).__name__, flush=True)
         raise SystemExit(1)
+
