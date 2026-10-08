@@ -572,21 +572,6 @@ def main():
 
     existing_posts = recent_items("posts", "id,message")
     existing_videos = recent_items("videos", "id,description")
-    if os.environ.get("PUBLISH_TO_FACEBOOK", "true").lower() == "true":
-        for post in posts:
-            old = next((item for item in existing_posts
-                        if post["telegram_url"] in (item.get("message") or "")), None)
-            caption = post["text"] + "\n\n" + post["telegram_url"]
-            if old and old.get("message") != caption:
-                graph("POST", old["id"], {"message": caption})
-                verified = graph("GET", old["id"], {"fields": "id,message"})
-                if verified.get("message") != caption:
-                    raise RuntimeError("Meta не підтвердила оновлення посилань у дописі")
-                old["message"] = caption
-                REPORT["posts"].append({"rank": post["rank"], "post_id": old["id"],
-                                        "stage": "caption_updated"})
-                checkpoint()
-                print("Посилання в дописі оновлено:", old["id"], flush=True)
     if os.environ.get("PUBLISH_TO_FACEBOOK", "true").lower() == "true" and all(
         any(post["telegram_url"] in (item.get("message") or "") for item in existing_posts)
         for post in posts
