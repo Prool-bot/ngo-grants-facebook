@@ -1,0 +1,63 @@
+name: Replace deleted Reel with light three-scene design
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: facebook-publication
+  cancel-in-progress: false
+jobs:
+  reel:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install requests beautifulsoup4 Pillow telethon==1.45.0 imageio-ffmpeg
+      - uses: actions/download-artifact@v4
+        with:
+          name: facebook-full-test-37740832712
+          run-id: 37740832712
+          github-token: ${{ github.token }}
+          path: source
+      - name: Render and publish replacement Reel only
+        env:
+          FACEBOOK_PAGE_ID: ${{ secrets.FACEBOOK_PAGE_ID }}
+          FACEBOOK_PAGE_ACCESS_TOKEN: ${{ secrets.FACEBOOK_PAGE_ACCESS_TOKEN }}
+          TELEGRAM_API_ID: ${{ secrets.TELEGRAM_API_ID }}
+          TELEGRAM_API_HASH: ${{ secrets.TELEGRAM_API_HASH }}
+          TELEGRAM_SESSION: ${{ secrets.TELEGRAM_SESSION }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          python -u - <<'PY'
+          import json
+          from pathlib import Path
+          from PIL import Image
+          import facebook_full_test as app
+          post = next(p for p in json.loads(Path('source/manifest.json').read_text())['posts'] if p['telegram_message_id'] == 3044)
+          page = app.graph('GET', 'me', {'fields':'id,name'})
+          if str(page.get('id')) != app.PAGE:
+              raise RuntimeError('Token belongs to another Page')
+          videos = app.recent_items('videos', 'id,description')
+          existing = [v for v in videos if post['telegram_url'] in (v.get('description') or '')]
+          if existing:
+              raise RuntimeError('A Reel for this grant still exists; refusing to create a duplicate')
+          with Image.open(Path('source') / post['image_file']) as image:
+              # Recover the original illustration, excluding the former dark title panel.
+              image.convert('RGB').crop((0, 0, 1080, 740)).save(app.OUTPUT / 'reel-source-1.jpg', quality=95)
+          post['reel_source_file'] = 'reel-source-1.jpg'
+          video = app.make_reel(post)
+          app.save_json(app.OUTPUT / 'manifest.json', {'posts':[post], 'replacement_for':'1629720188545624'})
+          app.publish_reel(video, post)
+          print('Published replacement Reel only; no photo posts created or modified.')
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: corrected-reel-${{ github.run_id }}
+          path: output/
+          retention-days: 14
