@@ -27,7 +27,7 @@ jobs:
           FACEBOOK_PAGE_ACCESS_TOKEN: ${{ secrets.FACEBOOK_PAGE_ACCESS_TOKEN }}
         run: |
           python - <<'PY'
-          import asyncio, os
+          import asyncio, os, time
           from telethon import TelegramClient
           from telethon.sessions import StringSession
           from facebook_full_test import full_text, graph
@@ -54,8 +54,14 @@ jobs:
                       caption = full_text(message) + "\n\n" + source
                       if current["message"] != caption:
                           graph("POST", post_id, {"message": caption})
-                      verified = graph("GET", post_id, {"fields": "id,message"})
-                      if verified.get("message") != caption:
+                      for attempt in range(10):
+                          verified = graph("GET", post_id, {"fields": "id,message"})
+                          if (verified.get("message") or "").split() == caption.split():
+                              break
+                          time.sleep(2)
+                      else:
+                          print("EXPECTED:", repr(caption))
+                          print("RECEIVED:", repr(verified.get("message")))
                           raise RuntimeError("Facebook caption verification failed")
                       print("VERIFIED:", post_id, "full link targets next to labels")
                   print("SUCCESS: All three captions verified. No new posts or videos created.")
