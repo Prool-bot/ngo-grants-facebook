@@ -1,0 +1,99 @@
+{
+  "schema_version": 1,
+  "channel": "ngo_grants",
+  "channel_url": "https://t.me/ngo_grants",
+  "updated_at": "2026-10-09T10:19:57.461835+00:00",
+  "last_full_sync": "2026-10-09T10:19:57.461835+00:00",
+  "message_count": 2349,
+  "last_message_id": 3091,
+  "months": [
+    {
+      "month": "2025-12",
+      "message_count": 31,
+      "json": "months/2025-12.json",
+      "text": "months/2025-12.md",
+      "first_id": 3,
+      "last_id": 34
+    },
+    {
+      "month": "2026-01",
+      "message_count": 29,
+      "json": "months/2026-01.json",
+      "text": "months/2026-01.md",
+      "first_id": 35,
+      "last_id": 65
+    },
+    {
+      "month": "2026-02",
+      "message_count": 22,
+      "json": "months/2026-02.json",
+      "text": "months/2026-02.md",
+      "first_id": 66,
+      "last_id": 87
+    },
+    {
+      "month": "2026-03",
+      "message_count": 71,
+      "json": "months/2026-03.json",
+      "text": "months/2026-03.md",
+      "first_id": 88,
+      "last_id": 164
+    },
+    {
+      "month": "2026-04",
+      "message_count": 104,
+      "json": "months/2026-04.json",
+      "text": "months/2026-04.md",
+      "first_id": 165,
+      "last_id": 273
+    },
+    {
+      "month": "2026-05",
+      "message_count": 139,
+      "json": "months/2026-05.json",
+      "text": "months/2026-05.md",
+      "first_id": 274,
+      "last_id": 414
+    },
+    {
+      "month": "2026-06",
+      "message_count": 227,
+      "json": "months/2026-06.json",
+      "text": "months/2026-06.md",
+      "first_id": 415,
+      "last_id": 685
+    },
+    {
+      "month": "2026-07",
+      "message_count": 497,
+      "json": "months/2026-07.json",
+      "text": "months/2026-07.md",
+      "first_id": 688,
+      "last_id": 1369
+    },
+    {
+      "month": "2026-08",
+      "message_count": 510,
+      "json": "months/2026-08.json",
+      "text": "months/2026-08.md",
+      "first_id": 1373,
+      "last_id": 2214
+    },
+    {
+      "month": "2026-09",
+      "message_count": 541,
+      "json": "months/2026-09.json",
+      "text": "months/2026-09.md",
+      "first_id": 2215,
+      "last_id": 2885
+    },
+    {
+      "month": "2026-10",
+      "message_count": 178,
+      "json": "months/2026-10.json",
+      "text": "months/2026-10.md",
+      "first_id": 2888,
+      "last_id": 3091
+    }
+  ]
+}
