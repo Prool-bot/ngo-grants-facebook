@@ -2,10 +2,10 @@
   "schema_version": 1,
   "channel": "ngo_grants",
   "channel_url": "https://t.me/ngo_grants",
-  "updated_at": "2026-10-09T10:21:29.315097+00:00",
+  "updated_at": "2026-10-10T09:56:56.663277+00:00",
   "last_full_sync": "2026-10-09T10:19:57.461835+00:00",
-  "message_count": 2349,
-  "last_message_id": 3091,
+  "message_count": 2367,
+  "last_message_id": 3116,
   "months": [
     {
       "month": "2025-12",
@@ -89,11 +89,11 @@
     },
     {
       "month": "2026-10",
-      "message_count": 178,
+      "message_count": 196,
       "json": "months/2026-10.json",
       "text": "months/2026-10.md",
       "first_id": 2888,
-      "last_id": 3091
+      "last_id": 3116
     }
   ]
 }
