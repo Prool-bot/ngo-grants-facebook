@@ -443,6 +443,16 @@ def _font():
     raise RuntimeError("Потрібен кириличний шрифт DejaVu Sans")
 
 
+def pdf_safe_title(value: str) -> str:
+    """Remove emoji unsupported by the embedded Cyrillic PDF font.
+
+    This changes only visual titles. The linked post and original archive text
+    are left untouched. It avoids black replacement squares in public PDFs.
+    """
+    value = re.sub(r"[\U0001F000-\U0001FAFF\u2600-\u27BF\uFE0E\uFE0F\u200D]", " ", str(value))
+    return " ".join(value.split()).strip(" -–—•")
+
+
 def pdf_catalog(path: Path, title: str, topic: str, rows: list[dict], stamp: date) -> None:
     from reportlab.lib import colors
     from reportlab.lib.enums import TA_CENTER, TA_LEFT
@@ -465,7 +475,7 @@ def pdf_catalog(path: Path, title: str, topic: str, rows: list[dict], stamp: dat
                             topMargin=22*mm, bottomMargin=20*mm, title=title, author="NGO Grants")
     safe = lambda s: escape(str(s), quote=True)
     story = [Paragraph("NGO GRANTS • ТЕМАТИЧНИЙ КАТАЛОГ", center),
-             Paragraph(safe(title.upper()), big),
+             Paragraph(safe(pdf_safe_title(title).upper()), big),
              Paragraph("Сформовано: " + stamp.strftime("%d.%m.%Y"), center),
              Paragraph("Тема запиту: " + safe(topic), body),
              Paragraph(f"Знайдено відповідних дописів: {len(rows)}. Джерело: виключно публікації @ngo_grants.", body),
@@ -475,7 +485,7 @@ def pdf_catalog(path: Path, title: str, topic: str, rows: list[dict], stamp: dat
     for idx, row in enumerate(rows, start=1):
         labels = extract_labels(row.get("text", ""))
         link = f"https://t.me/{CHANNEL}/{row['id']}"
-        heading = safe(row.get("_title", "Грантова можливість"))
+        heading = safe(pdf_safe_title(row.get("_title", "Грантова можливість")))
         item = [Paragraph(f"{idx}. {heading}", head),
                 Paragraph("Дедлайн за дописом: " + safe(date.fromisoformat(row["_deadline"]).strftime("%d.%m.%Y")), body)]
         for key, label in (("funding", "Фінансування"), ("eligibility", "Хто може подаватися"),
