@@ -215,7 +215,12 @@ def strict_topic_match(query: str, post_text: str) -> bool:
     # Prevent bare links from satisfying a thematic condition.
     source = re.sub(r"https?://\S+", " ", source)
     if documentary_request(query):
-        return any(term in source for term in DOCUMENTARY_TERMS)
+        # "Documentary" alone also describes documentary photography and
+        # environmental documentation. The archived opportunity must mention
+        # BOTH documentary practice and film/cinema production. This check
+        # applies before and after AI ranking, preventing subject drift.
+        return (any(term in source for term in DOCUMENTARY_TERMS)
+                and any(term in source for term in FILM_TERMS))
     if film_request(query):
         return any(term in source for term in FILM_TERMS)
     return True
