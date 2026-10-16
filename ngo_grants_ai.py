@@ -881,6 +881,76 @@ def accept_requests(state: dict, token: str) -> None:
             break
 
 
+def gateway_api(path: str, data: dict | None = None) -> dict:
+    """Worker/D1 is the source for *new* user requests in webhook mode.
+
+    The Telegram token is never passed to the Worker gateway endpoint: it has
+    its own protected BOT_TOKEN Cloudflare Secret. The sync key is sent only
+    over HTTPS and never printed in logs.
+    """
+    base = os.environ.get("NGO_BOT_GATEWAY_URL", "").strip().rstrip("/")
+    key = os.environ.get("NGO_BOT_SYNC_SECRET", "").strip()
+    if not base or not key or not base.startswith("https://"):
+        raise RuntimeError("Потрібні NGO_BOT_GATEWAY_URL (https://) і NGO_BOT_SYNC_SECRET")
+    if path not in ("/internal/pending", "/internal/sync", "/internal/activate", "/internal/deactivate"):
+        raise ValueError("Unsupported gateway route")
+    try:
+        return http_json(base + path, data=data, headers={"Authorization": "Bearer " + key}, timeout=30)
+    except RuntimeError as exc:
+        # Deliberately don't output gateway URL or bearer token.
+        raise RuntimeError("Не вдалось обмінятися даними з ботом Cloudflare (" + type(exc).__name__ + ")") from None
+
+
+def import_gateway_requests(state: dict) -> None:
+    """Read pending D1 queue; add only unseen IDs to existing GitHub queue."""
+    response = gateway_api("/internal/pending")
+    incoming = response.get("requests") or []
+    if not isinstance(incoming, list):
+        raise RuntimeError("Cloudflare повернув некоректний список запитів")
+    seen = {int(x) for x in state.get("gateway_seen_ids", [])}
+    old = {int(r["id"]) for r in state.get("queue", []) + state.get("published", [])}
+    received = 0
+    for item in incoming[:100]:
+        try:
+            request_id = int(item["id"])
+            topic = sanitize_user_text(str(item["topic"]))
+            requested_at = str(item["requested_at"])
+        except (TypeError, ValueError, KeyError):
+            continue
+        if request_id <= 0 or len(topic) < 10 or len(topic) > 250:
+            continue
+        if request_id in seen or request_id in old:
+            seen.add(request_id)
+            continue
+        if related_existing(topic, state) or same_in_queue(topic, state):
+            # Worker already replied; do not generate a near-duplicate catalog.
+            seen.add(request_id)
+            continue
+        state.setdefault("queue", []).append({"id": request_id, "topic": topic,
+                                                 "requested_at": requested_at})
+        seen.add(request_id)
+        received += 1
+    state["gateway_seen_ids"] = sorted(seen)[-500:]
+    save_state(state)
+    print("Cloudflare: імпортовано нових тематичних запитів:", received)
+
+
+def notify_gateway(state: dict) -> None:
+    """Run AFTER successful Git push, so a failed push cannot lose requests."""
+    if not os.environ.get("NGO_BOT_GATEWAY_URL"):
+        print("Cloudflare: шлюз не налаштовано; використовується старий режим.")
+        return
+    reply = gateway_api("/internal/sync", {
+        "ack_ids": state.get("gateway_seen_ids", []),
+        "queue_ids": [item["id"] for item in state.get("queue", [])],
+        "published": state.get("published", [])[-60:],
+        "legacy_last_update_id": state.get("last_update_id", 0),
+        "user_days": state.get("users_days", {}),
+    })
+    print("Cloudflare: стан синхронізовано, каталогів:", reply.get("published"),
+          "; підтверджених запитів:", reply.get("acknowledged"))
+
+
 def can_publish(state: dict, now: datetime) -> bool:
     local_day = now.astimezone(KYIV).date().isoformat()
     today_count = sum(x.get("published_on") == local_day for x in state.get("published", []))
@@ -950,18 +1020,41 @@ def demo(query: str, archive: Path, output: Path) -> None:
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--demo", help="Локальний приклад PDF без Telegram та ШІ")
+    parser.add_argument("--gateway-sync", action="store_true", help="Синхронізувати каталоги з Cloudflare після Git push")
+    parser.add_argument("--gateway-activate", action="store_true", help="Окремо ввімкнути миттєві відповіді через Telegram webhook")
+    parser.add_argument("--gateway-deactivate", action="store_true", help="Вимкнути webhook; потім видалити GitHub Secret URL")
     parser.add_argument("--archive", type=Path, default=ARCHIVE)
     parser.add_argument("--output", type=Path, default=Path("output/demo-catalog.pdf"))
     args = parser.parse_args()
     if args.demo:
         demo(args.demo, args.archive, args.output)
         return
+    if args.gateway_sync:
+        notify_gateway(load_state())
+        return
+    if args.gateway_activate:
+        result = gateway_api("/internal/activate", {})
+        if not result.get("ok"):
+            raise RuntimeError("Telegram webhook не активовано")
+        print("Telegram webhook активовано на Cloudflare Worker (без розкриття токена).")
+        return
+    if args.gateway_deactivate:
+        result = gateway_api("/internal/deactivate", {})
+        if not result.get("ok"):
+            raise RuntimeError("Telegram webhook не вимкнено")
+        print("Telegram webhook вимкнено. Видаліть NGO_BOT_GATEWAY_URL у GitHub Secrets, щоб повернути polling.")
+        return
     token = os.environ.get("NGO_GRANTS_AI_BOT_TOKEN", "").strip()
     if not token:
         raise RuntimeError("GitHub Secret NGO_GRANTS_AI_BOT_TOKEN відсутній")
     state = load_state()
     configure_bot_profile(state)
-    accept_requests(state, token)
+    if os.environ.get("NGO_BOT_GATEWAY_URL"):
+        # A bot with an active webhook CANNOT use Telegram getUpdates.
+        # All navigation is instant in Worker; only accepted topics are read here.
+        import_gateway_requests(state)
+    else:
+        accept_requests(state, token)
     save_state(state)
     # Safe rollout switch: intake works before Cloudflare AI is connected.
     if os.environ.get("NGO_AI_AUTOPUBLISH", "false").lower() != "true":
