@@ -1,0 +1,94 @@
+name: NGO Grants - Cloudflare connection check (read-only)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    env:
+      NGO_BOT_GATEWAY_URL: ${{ secrets.NGO_BOT_GATEWAY_URL }}
+      NGO_BOT_SYNC_SECRET: ${{ secrets.NGO_BOT_SYNC_SECRET }}
+    steps:
+      - name: Check Worker and protected endpoint without changing data
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          import sys
+          import urllib.error
+          import urllib.request
+          from urllib.parse import urlsplit
+
+          url = os.getenv('NGO_BOT_GATEWAY_URL', '').strip().rstrip('/')
+          secret = os.getenv('NGO_BOT_SYNC_SECRET', '').strip()
+          if not url or not secret:
+              print('FAILED: GitHub is missing gateway URL or sync secret.')
+              sys.exit(1)
+          parsed = urlsplit(url)
+          if parsed.scheme != 'https' or not parsed.netloc or parsed.path:
+              print('FAILED: Gateway URL must be https://WORKER.workers.dev with no path.')
+              sys.exit(1)
+
+          def read(path, authorized=False):
+              headers = {'Accept': 'application/json'}
+              if authorized:
+                  headers['Authorization'] = 'Bearer ' + secret
+              req = urllib.request.Request(url + path, headers=headers)
+              try:
+                  with urllib.request.urlopen(req, timeout=15) as res:
+                      return res.status, res.read(20000), res.headers.get('content-type', '')
+              except urllib.error.HTTPError as exc:
+                  return exc.code, b'', exc.headers.get('content-type', '')
+              except (urllib.error.URLError, TimeoutError) as exc:
+                  print('NETWORK ERROR:', type(exc).__name__)
+                  return 0, b'', ''
+
+          status, body, content_type = read('/health')
+          print('GET /health: HTTP', status)
+          if status != 200:
+              print('FAILED: Worker URL is not reachable or the Worker is unavailable.')
+              sys.exit(1)
+          try:
+              health = json.loads(body)
+          except ValueError:
+              health = {}
+          if health.get('ok') is not True or health.get('name') != 'NGO Grants Instant UI':
+              print('FAILED: URL points to a different Worker or version.')
+              sys.exit(1)
+          print('Worker identity: correct.')
+
+          status, _, _ = read('/internal/pending')
+          print('GET /internal/pending (without key): HTTP', status)
+          if status != 403:
+              print('WARNING: Protected endpoint did not return expected 403 without key.')
+
+          status, body, content_type = read('/internal/pending', authorized=True)
+          print('GET /internal/pending (with GitHub key): HTTP', status)
+          if status == 200:
+              try:
+                  count = len(json.loads(body)['requests'])
+              except (ValueError, KeyError, TypeError):
+                  print('FAILED: Protected response has an unexpected JSON format.')
+                  sys.exit(1)
+              print('SUCCESS: GitHub ↔ Cloudflare authenticated connection works.')
+              print('Pending requests visible to gateway:', count)
+              print('No data was modified. No AI tokens were used.')
+          elif status == 403:
+              print('FAILED: GitHub sync secret does not match the Worker SYNC_SECRET, or access is blocked.')
+              sys.exit(1)
+          elif status == 404:
+              print('FAILED: The Worker does not recognize this protected endpoint.')
+              sys.exit(1)
+          elif status == 503:
+              print('FAILED: Worker/database returned 503; inspect Worker logs and D1 binding.')
+              sys.exit(1)
+          else:
+              print('FAILED: Unexpected gateway response, HTTP', status, 'type', content_type)
+              sys.exit(1)
+          PY
