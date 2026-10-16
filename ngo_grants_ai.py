@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 from collections import Counter
+from copy import deepcopy
 from datetime import date, datetime, timedelta, timezone
 from difflib import SequenceMatcher
 from html import escape
@@ -461,6 +462,14 @@ def http_json(url: str, data: dict | None = None, headers: dict | None = None, t
     return result
 
 
+class TelegramRecipientUnavailable(RuntimeError):
+    """A private recipient blocked the bot or deactivated their account.
+
+    This is a user-specific delivery issue, not a failure of the bot as a whole.
+    Do not expose Telegram chat IDs or credentials in logs.
+    """
+
+
 def tg(method: str, params: dict) -> dict:
     token = os.environ.get("NGO_GRANTS_AI_BOT_TOKEN", "").strip()
     if not token:
@@ -468,7 +477,14 @@ def tg(method: str, params: dict) -> dict:
     try:
         return http_json(f"https://api.telegram.org/bot{token}/{method}", data=params)
     except RuntimeError as exc:
-        # This method name is safe to log; URL/token, payload, and chat IDs are not.
+        # Telegram 403 from a PRIVATE sendMessage must not halt the entire
+        # global request queue. Other HTTP errors still propagate normally.
+        details = str(exc).casefold()
+        if (method == "sendMessage" and "http 403" in details and
+                any(reason in details for reason in (
+                    "bot was blocked by the user", "user is deactivated"))):
+            raise TelegramRecipientUnavailable("Приватний адресат недоступний") from None
+        # The method name is safe; do not log a request URL, payload, token or user ID.
         raise RuntimeError(f"Telegram {method}: {exc}") from None
 
 
@@ -842,8 +858,21 @@ def accept_requests(state: dict, token: str) -> None:
         if not updates:
             break
         for update in updates:
-            # Advance after handling; if Bot API fails, an error preserves unprocessed offset.
-            handle_update(update, state, token)
+            # A subscriber may send /start or a request and THEN block the bot.
+            # Telegram permanently rejects replies with 403 in that case.
+            # Skip only those undeliverable PRIVATE replies, not the whole queue.
+            # Roll back this update's potential quota/queue mutation so an
+            # unacknowledged request does not consume anyone's daily allowance.
+            snapshot = deepcopy(state)
+            try:
+                handle_update(update, state, token)
+            except TelegramRecipientUnavailable:
+                state.clear()
+                state.update(snapshot)
+                print("Telegram: пропущено повідомлення від адресата, "
+                      "який заблокував бота або недоступний (403).")
+            # Any OTHER unexpected error still stops processing without
+            # advancing the offset, preserving retry semantics.
             state["last_update_id"] = update["update_id"]
             offset = update["update_id"] + 1
         # Durable write before the next batch.
