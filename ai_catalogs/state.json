@@ -4,13 +4,24 @@
   "users_days": {
     "4fe9fc9af08945c45f1e1456c04f74": "2026-10-16"
   },
-  "queue": [
+  "queue": [],
+  "published": [
     {
       "id": 272838672,
       "topic": "Гранти для документального кіно",
-      "requested_at": "2026-10-16T11:09:17.947146+00:00"
+      "title": "Гранти для документального кіно",
+      "channel_url": "https://t.me/ngo_grants/3255",
+      "pdf": "ai_catalogs/pdfs/ngo_grants_20261016_272838672.pdf",
+      "post_ids": [
+        3127,
+        3130,
+        3093,
+        1188,
+        2728
+      ],
+      "published_on": "2026-10-16",
+      "valid_until": "2026-10-31"
     }
   ],
-  "published": [],
-  "last_post_at": null
+  "last_post_at": "2026-10-16T13:15:36.909621+00:00"
 }
