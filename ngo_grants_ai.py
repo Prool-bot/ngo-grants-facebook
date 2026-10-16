@@ -204,6 +204,48 @@ def film_request(query: str) -> bool:
     return any(term in query for term in FILM_TERMS)
 
 
+def explicitly_excludes_documentary(post_text: str) -> bool:
+    """Do not confuse a listed *exclusion* with a supported film genre.
+
+    Scan explicit non-fundable sections of an archived announcement. The
+    decision uses the channel text only, not external information or the LLM.
+    """
+    banned_headers = (
+        "не фінансуються", "не підтримуються", "не приймаються", "не фінансуємо",
+        "не підтримуємо", "не розглядаються", "not funded", "not supported",
+        "we do not fund", "we don't fund", "ineligible activities", "excluded activities",
+    )
+    documentary_film = re.compile(
+        r"(?:документаль\w*\s+фільм\w*|докфільм\w*|documentary\s+films?|"
+        r"documentary\s+movies?|non[ -]?fiction\s+films?)", re.I
+    )
+    inside_exclusions = False
+    bullet_count = 0
+    for raw_line in post_text.splitlines():
+        line = unicodedata.normalize("NFKC", raw_line).casefold().strip()
+        if not line:
+            continue
+        is_exclusion_header = any(x in line for x in banned_headers)
+        if is_exclusion_header:
+            if documentary_film.search(line):
+                return True
+            inside_exclusions = True
+            bullet_count = 0
+            continue
+        # An exclusion list typically consists of bullet points and finishes
+        # at the next section heading. Never scan the entire later article.
+        is_bullet = line.startswith(("•", "-", "–", "—", "*", "▪", "●", "◦"))
+        if inside_exclusions and not is_bullet:
+            inside_exclusions = False
+        if inside_exclusions:
+            bullet_count += 1
+            if documentary_film.search(line):
+                return True
+            if bullet_count >= 25:
+                inside_exclusions = False
+    return False
+
+
 def strict_topic_match(query: str, post_text: str) -> bool:
     """Fail closed for narrow documentary/film requests.
 
@@ -215,10 +257,10 @@ def strict_topic_match(query: str, post_text: str) -> bool:
     # Prevent bare links from satisfying a thematic condition.
     source = re.sub(r"https?://\S+", " ", source)
     if documentary_request(query):
-        # "Documentary" alone also describes documentary photography and
-        # environmental documentation. The archived opportunity must mention
-        # BOTH documentary practice and film/cinema production. This check
-        # applies before and after AI ranking, preventing subject drift.
+        # "Documentary" in an EXCLUDED activity is not evidence of eligibility.
+        if explicitly_excludes_documentary(post_text):
+            return False
+        # Documentary photography alone is not a film opportunity.
         return (any(term in source for term in DOCUMENTARY_TERMS)
                 and any(term in source for term in FILM_TERMS))
     if film_request(query):
@@ -266,7 +308,7 @@ def rank_posts(rows: list[dict], query: str, keywords: list[str], now: date | No
 def extract_labels(text: str) -> dict[str, str]:
     """Copy source lines; do not invent funder amounts/geographies."""
     patterns = {
-        "funding": r"(?:💰\s*)?(?:фінансування|сума|розмір гранту|бюджет|funding|grant amount)\s*[:—–-]\s*(.+)",
+        "funding": r"(?m)^[^\w\n]{0,5}\s*(?:фінансування|сума гранту|сума фінансування|розмір гранту|funding|grant amount)\s*[:—–-]\s*([^\n]+)",
         "eligibility": r"(?:хто може (?:подаватися|подати|брати участь)|для кого|учасники|eligibility|who can apply)\s*[:—–-]\s*(.+)",
         "geography": r"(?:географія|країни|регіон|location|geography)\s*[:—–-]\s*(.+)",
     }
@@ -371,6 +413,8 @@ def ai_select(query: str, ranked: list[dict]) -> list[int]:
         "анімаційні фільми. Якщо документальні фільми прямо названо серед "
         "прийнятних категорій, його ТРЕБА включити до добірки документального кіно, "
         "навіть якщо назва гранту загальна. "
+        "НІКОЛИ не включай напрям, зазначений у розділах «Не фінансуються», "
+        "«Не підтримуються», «Виключення» або 'ineligible'. "
         "Не включай документальну фотографію, журналістику або освітні гранти, "
         "де кіно лише випадково згадане. Не включай лише за тематичними хештегами. "
         "Не заповнюй штучно квоту: точність важливіша за кількість. "
