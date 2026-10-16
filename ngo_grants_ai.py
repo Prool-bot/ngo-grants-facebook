@@ -111,7 +111,8 @@ def similarity(a: str, b: str) -> float:
 def related_existing(query: str, state: dict) -> dict | None:
     for existing in reversed(state.get("published", [])):
         if similarity(query, existing.get("topic", "")) >= 0.79:
-            # Do not reuse catalog if its earliest deadline was already passed.
+            # Keep a catalog discoverable while at least one listed deadline
+            # may still be open. Individual entries have their own deadlines.
             until = existing.get("valid_until")
             if until and until >= today_kyiv().isoformat():
                 return existing
@@ -277,11 +278,37 @@ def strict_topic_match(query: str, post_text: str) -> bool:
                 and any(term in source for term in FILM_TERMS))
     if film_request(query):
         return any(term in source for term in FILM_TERMS)
+    # Multi-facet requests must not turn into generic grants for one facet.
+    # This also covers the currently queued "гранти для бджолярів - жінок".
+    q = unicodedata.normalize('NFKC', query).casefold()
+    if any(t in q for t in ('бджол', 'пасіч', 'beekee', 'apiary')):
+        if not any(t in source for t in ('бджол', 'пасіч', 'beekee', 'apiary', 'apiculture')):
+            return False
+        # A sector-specific call open to *all* beekeepers is still relevant
+        # to women; do not require an explicit "women" keyword in the post.
     if software_request(query):
         # A passing mention in footnotes, eligibility or generic hashtags is
         # insufficient. Software development must be visible in the proposal's
         # introductory description or the actual funding focus.
         focus = re.sub(r"#[^\s]+", "", source[:1300])
+        # Some official Telegram summaries list the fundable software category
+        # later under "Що підтримується". Inspect those POSITIVE sections
+        # too, without treating footers, hashtags or exclusions as evidence.
+        for match in re.finditer(
+            r"(?m)^\s*(?:що\s+підтримується|що\s+фінансується|основні\s+напрями|"
+            r"напрями\s+підтримки|тематичні\s+пріоритети)\s*[:—–]?\s*$", source, re.I
+        ):
+            snippet = source[match.end():match.end()+700]
+            stop = re.search(r"(?m)^\s*(?:не\s+фінансується|не\s+підтримується|"
+                             r"виключення|хто\s+може|як\s+подат|офіційна\s+сторінка)",
+                             snippet, re.I)
+            focus += "\n" + snippet[:stop.start()] if stop else "\n" + snippet
+        # Reject explicit non-supported software development rather than letting
+        # a negative eligibility sentence be misread as a positive opportunity.
+        if re.search(r"(?:розроб\w*\s+(?:програмн\w*|застосунк\w*|додатк\w*)|software\s+develop\w*)"
+                     r".{0,70}(?:не\s+фінанс\w*|не\s+підтрим\w*|виключ\w*|ineligible|not\s+supported)",
+                     focus, re.I):
+            return False
         return bool(re.search(
             r"(?:open[ -]?source|software|програмн\w*\s+(?:забезпечення|рішен|продукт)|"
             r"розроб\w*\s+(?:програмн\w*|цифров\w*|відеоігор|ігор|застосунк|додатк)|"
@@ -438,6 +465,9 @@ def ai_select(query: str, ranked: list[dict]) -> list[int]:
         "НІКОЛИ не включай напрям у розділах «Не фінансуються», «Виключення», "
         "'ineligible' чи 'not supported'. Не включай лише за хештегами або "
         "побіжною згадкою. Виключай не пов'язані з темою конкурси і нагороди. "
+        "Для поєднаних запитів зберігай галузь і зазначені умови; наприклад, "
+        "для жінок-бджолярів підходить конкурс із бджільництва, відкритий "
+        "для жінок, але НЕ загальний жіночий конкурс без бджільництва. "
         "Для запиту про розроблення програмного забезпечення обирай лише ті, що "
         "підтримують створення коду, застосунків, цифрових інструментів, платформ "
         "або ігор, а не просто інновації, енергетику чи медицину. "
@@ -716,103 +746,118 @@ def pdf_safe_title(value: str) -> str:
 
 
 def catalog_card_fields(post_text: str) -> dict[str, str]:
-    """Compact, evidence-only fields from the archived Telegram post.
+    """Extract short, source-grounded facts without mixing adjacent sections.
 
-    No generative rewriting of grant facts. Headings/bullets are common in our
-    archive, but a missing value stays missing and is never guessed.
+    The archive contains many headings without a colon (``💰 ФІНАНСУВАННЯ``),
+    bullets, and several budgets (total programme / per application).
+    This parser reads only inside one heading block and does not invent data.
     """
-    source = [x.strip() for x in post_text.splitlines()]
-    lines = [re.sub(r"^[•*▪✅✔◦\-–—\s]+", "", pdf_safe_title(x)).strip()
-             for x in source]
-    lines = [re.sub(r"\s+", " ", x).strip() for x in lines]
-    headings = {
-        "funding": re.compile(r"(?:фінансуван|сума гранту|розмір гранту|фінансові умови|підтримка\s*:|grant amount|funding)", re.I),
-        "eligibility": re.compile(r"(?:хто може|хто може подат|хто подає|для кого|учасники|who can apply|eligibility)", re.I),
-        "geography": re.compile(r"(?:географія|країни участі|регіон участі|geography|location)", re.I),
-        "support": re.compile(r"(?:що підтримується|що фінансується|напрями підтримки|проєкти підтримки|основні напрями)", re.I),
-        "warning": re.compile(r"(?:важливо|обмеження|ключова вимога|важлива вимога|увага|зверніть увагу)", re.I),
-    }
+    raw = [pdf_safe_title(x).strip() for x in post_text.splitlines()]
+
     def plain(line: str) -> str:
-        line = re.sub(r"https?://\S+|#[\wа-яіїєґ]+", "", line, flags=re.I)
-        line = line.strip(" :—–-•*.;")
-        return re.sub(r"\s+", " ", line)
+        line = re.sub(r'https?://\S+|#[\wа-яіїєґ]+', '', line, flags=re.I)
+        line = re.sub(r'^[•*▪✅✔◦\-–—\s]+', '', line)
+        return re.sub(r'\s+', ' ', line).strip(' :—–-•*.;')
 
-    def from_section(key: str, max_len: int = 165) -> str:
-        pat = headings[key]
-        for i, line in enumerate(lines):
-            if not pat.match(line) or len(line) > 160:
-                continue
-            inline = re.split(r"\s*[:—–]\s*", line, maxsplit=1)
-            # A heading may begin with an emoji, already stripped by pdf_safe_title.
-            candidates = []
-            if len(inline) > 1 and len(inline[1]) > 4:
-                candidates.append(inline[1])
-            for x in lines[i+1:i+6]:
-                if not x:
-                    continue
-                if re.search(r"(?:📅|дедлайн\s*:|^https?://)", x, re.I):
-                    break
-                if any(other.match(x) for typ, other in headings.items() if typ != key):
-                    break
-                if (x.startswith('http') or x.startswith('#') or
-                    (x == x.upper() and len(x) > 26)):
-                    break
-                candidates.append(x)
-                if len(candidates) >= 3:
-                    break
-            if not candidates:
-                continue
-            if key == 'funding':
-                # Skip empty headings and general funding-program names.
-                money = re.compile(r"(?:€|£|\$|₴|\b(?:EUR|USD|GBP)\b|\d\s*%|євро|грн|долар|\b(?:оплачен|фінансован|контракт|пілот))", re.I)
-                candidates = [c for c in candidates if money.search(c)]
-                if not candidates:
-                    continue
-                # "total call budget" is not a per-application grant.
-                candidate = candidates[0]
-                if re.search(r"загальн\w* бюджет|budget of the call", candidate, re.I):
-                    candidate = 'Загальний бюджет конкурсу: ' + re.sub(r"^загальн\w* бюджет(?: конкурсу)?\s*[—–:-]?\s*", "", candidate, flags=re.I)
-                return _catalog_ellipsis(plain(candidate), max_len)
-            if key == 'geography':
-                candidate = plain(candidates[0])
-                if re.search(r"\b\d{1,2}:\d\d\b", candidate) and not re.search(r"країн|Україн|міжнарод|ЄС|Європ|весь світ", candidate, re.I):
-                    continue
-                return _catalog_ellipsis(candidate, max_len)
-            return _catalog_ellipsis('; '.join(plain(x) for x in candidates[:2]), max_len)
-        return ''
+    heads = {
+        'funding': r'(?:фінансуван(?:ня)?|фінансові умови|фінансова підтримка|сума гранту|розмір гранту|грантова підтримка|grant amount|funding)',
+        'eligibility': r'(?:хто може податись|хто може подаватися|хто може податися|хто подає|для кого|учасники|who can apply|eligibility)',
+        'geography': r'(?:географія(?: та участь[^:]*)?|країни участі|регіон участі|geography|location)',
+        'warning': r'(?:важливо|обмеження|ключова вимога|важлива вимога|основні вимоги|увага|зверніть увагу)',
+        'support': r'(?:що підтримується|що фінансується|напрями підтримки|проєкти підтримки|основні напрями|що очікують|як податися|порядок подання|документи)',
+        'deadline': r'(?:дедлайн|термін подання|кінцевий термін|deadline)',
+    }
+    start = {k: re.compile(r'^' + pattern + r'(?=$|[\s:—–-])', re.I)
+             for k, pattern in heads.items()}
+    # Long bullet sentences beginning with e.g. "важливо" aren't section headers.
+    def section_of(s: str) -> str | None:
+        if len(s) > 165:
+            return None
+        return next((k for k,p in start.items() if p.match(s)), None)
 
+    def take_block(key: str) -> list[str]:
+        for i, raw_line in enumerate(raw):
+            line = plain(raw_line)
+            if section_of(line) != key:
+                continue
+            # Keep a value after a separator, but never re-echo the header.
+            sep = re.search(r'\s*[:—–]\s*', line)
+            values = []
+            if sep:
+                inline = plain(line[sep.end():])
+                if inline and len(inline) > 3:
+                    values.append(inline)
+            for next_line in raw[i+1:]:
+                v = plain(next_line)
+                if not v:
+                    continue
+                # Do not drift into the next section, dates, links or hashtags.
+                if (section_of(v) or re.match(r'^(?:🇺🇦\s*)?(?:Україн\w*\s+(?:мож\w*|не\s+мож\w*))', v, re.I)
+                    or re.search(r'\b(?:дедлайн|deadline)\b', v, re.I)
+                    or re.match(r'^(?:https?://|#|офіційн\w*\s+сторінк)', v, re.I)):
+                    break
+                if len(v) > 350 or (v.isupper() and len(v) > 27):
+                    break
+                values.append(v)
+                if len(values) >= 3:
+                    break
+            if values:
+                return values
+        return []
+
+    # Only full introductory sentences; never a time, a URL or a part of a
+    # "who is eligible" section mislabelled as the opportunity's summary.
     intro = []
-    for line in lines[1:]:
-        v = plain(line)
-        if not v:
+    for raw_line in raw[1:]:
+        line = plain(raw_line)
+        if not line:
             if intro:
                 break
             continue
-        if (re.search(r"(?:дедлайн|фінансуван|географія|хто може|дата|^https?://)", v, re.I)
-            or v.startswith('https:')):
+        if (section_of(line) or line.startswith(('http', '#'))
+                or re.match(r'^(?:для України\s*[—–-]?\s*\d{1,2}:\d{2})', line, re.I)):
             break
-        if v.startswith('#'):
+        intro.append(line)
+        if len(intro) == 2 or sum(map(len, intro)) > 190:
             break
-        intro.append(v)
-        if sum(map(len, intro)) > 195 or len(intro) >= 2:
-            break
-    summary = _catalog_ellipsis(' '.join(intro), 205)
-    funding = from_section('funding', 112)
-    eligibility = from_section('eligibility', 111)
-    geography = from_section('geography', 105)
-    warning = from_section('warning', 110)
-    # Check for *explicit* Ukrainian participation language only.
-    ukr_line = next((plain(x) for x in lines if
-        re.search(r"(?:Україн\w+\s+(?:мож\w+|допуска\w+|підход\w+)|Україна\s+(?:мож\w+|підход\w+|є\s+асоційован))", x, re.I)
-        and not re.search(r"(?:не можуть|не допуска\w+|не підход\w+)", x, re.I)), '')
-    if not geography and ukr_line:
-        geography = _catalog_ellipsis(ukr_line, 105)
+    summary = ' '.join(intro)
+    # Cut at a sentence boundary where possible; no synthetic completion.
+    if len(summary) > 240:
+        end = list(re.finditer(r'[.!?](?=\s|$)', summary[:245]))
+        summary = summary[:end[-1].end()] if end else _catalog_ellipsis(summary, 220)
+
+    funding_lines = take_block('funding')
+    monetary = re.compile(r'(?:€|£|\$|₴|\b(?:EUR|USD|GBP)\b|\d\s*%|євро|грн|долар|\b(?:оплачен|фінансован|контракт|пілот))', re.I)
+    amounts = [x for x in funding_lines if monetary.search(x)]
+    # Programme-wide budgets are different from the award per applicant.
+    individual = [x for x in amounts if not re.search(r'загальн\w* бюджет|бюджет\s+конкурсу', x, re.I)]
+    if individual:
+        # Keep both cash and non-cash components (e.g. AWS cloud credits).
+        useful = individual[:2]
+        funding = '; '.join(useful)
+    elif amounts:
+        funding = re.sub(r'^загальн\w* бюджет(?: конкурсу)?\s*[:—–-]\s*',
+                         'Бюджет програми: ', amounts[0], flags=re.I)
+    else:
+        funding = ''
+
+    eligibility = '; '.join(take_block('eligibility')[:2])
+    geo_candidates = take_block('geography')
+    geography = next((x for x in geo_candidates if
+                      not re.search(r'\b\d{1,2}:\d{2}\b', x)), '')
+    if not geography:
+        ukrainian = next((plain(x) for x in raw if
+            re.search(r'\b(?:Україн\w*\s+(?:мож\w*|допуска\w*|підход\w*)|Україна\s+(?:підход\w*|мож\w*|є\s+асоційован))', x, re.I)
+            and not re.search(r'не\s+(?:мож\w*|допуска\w*|підход\w*)', x, re.I)), '')
+        geography = ukrainian if not re.search(r'\b\d{1,2}:\d{2}\b', ukrainian) else ''
+    warning = '; '.join(take_block('warning')[:2])
+
     return {
         'summary': summary or 'Опис і повні умови — в публікації каналу.',
-        'funding': funding or 'Суму див. у дописі',
-        'eligibility': eligibility or 'Умови див. у дописі',
-        'geography': geography or 'Умови див. у дописі',
-        'warning': warning or 'Перевірте актуальні умови й дедлайн у першоджерелі.',
+        'funding': funding or 'Суму уточніть у дописі',
+        'eligibility': eligibility or 'Умови участі — у дописі',
+        'geography': geography or 'Географія — у дописі',
+        'warning': warning or 'Перед поданням перевірте чинні правила.',
     }
 
 
@@ -877,6 +922,34 @@ def pdf_catalog(path: Path, title: str, topic: str, rows: list[dict], stamp: dat
         item.drawOn(c, x, top-h)
         return h
 
+    def measure(s: str, width: float, size: float, leading: float, face=None) -> float:
+        st = ParagraphStyle('catalog-measure', fontName=face or font,
+                            fontSize=size, leading=leading)
+        item = Paragraph(escape(pdf_safe_title(s), quote=False), st)
+        return item.wrap(width, H)[1]
+
+    def fit_lines(s: str, width: float, size: float, leading: float,
+                  lines: int, face=None) -> str:
+        """Fit by *rendered height*, with a visible ellipsis linked to full text.
+
+        Unlike character-based cuts, this is robust with very long Ukrainian
+        titles, long institution names and narrower two-column field widths.
+        """
+        s = pdf_safe_title(s)
+        if measure(s, width, size, leading, face) <= lines*leading + .1:
+            return s
+        parts = s.split()
+        lo, hi, best = 0, len(parts), ''
+        while lo <= hi:
+            mid = (lo+hi)//2
+            candidate = ' '.join(parts[:mid]).rstrip(' ,.:-–—;') + '…'
+            if measure(candidate, width, size, leading, face) <= lines*leading + .1:
+                best = candidate
+                lo = mid+1
+            else:
+                hi = mid-1
+        return best or 'Деталі — у дописі…'
+
     def pill(x: float, y: float, w: float, h: float, label: str, bg, fg,
              size: float = 7.1):
         c.setFillColor(bg)
@@ -937,31 +1010,59 @@ def pdf_catalog(path: Path, title: str, topic: str, rows: list[dict], stamp: dat
         pill(x+38, top-32, 162, 19, tag, LIGHT_TEAL, TEAL, 7)
         dline = date.fromisoformat(row['_deadline']).strftime('%d.%m.%Y')
         pill(x+width-129, top-32, 115, 19, 'ДЕДЛАЙН: '+dline, CREAM, NAVY, 6.9)
-        label = _catalog_ellipsis(row.get('_title', 'Грантова можливість'), 100)
-        title_h = pdraw(label, x+16, top-44, width-32, 10.5, 15.2, bold, NAVY)
+        # All visible fields have fixed *rendered line counts*, not arbitrary
+        # character limits. Long posts do not overflow onto another card.
         fields = catalog_card_fields(row.get('text',''))
-        summary_top = top-44-title_h-10
-        intro_h = pdraw(fields['summary'], x+16, summary_top, width-32, 8.6, 13, font, DARK)
-        divider = summary_top-intro_h-11
-        c.setStrokeColor(LINE)
-        c.line(x+16, divider, x+width-16, divider)
         col_w = (width-48)/2
         left = x+16
         right = x+32+col_w
+        label = fit_lines(row.get('_title', 'Грантова можливість'),
+                          width-32, 10.5, 15.2, 3, bold)
+        summary = fit_lines(fields['summary'], width-32, 8.6, 13, 2)
+        fld = {
+            'funding': fit_lines(fields['funding'], col_w, 8.0, 12, 2),
+            'eligibility': fit_lines(fields['eligibility'], col_w, 8.0, 12, 2),
+            'geography': fit_lines(fields['geography'], col_w, 7.9, 11.8, 2),
+            'warning': fit_lines(fields['warning'], col_w, 7.9, 11.8, 2),
+        }
+
+        def content_bottom() -> float:
+            title_height = measure(label, width-32, 10.5, 15.2, bold)
+            intro_height = measure(summary, width-32, 8.6, 13)
+            first = max(measure(fld['funding'], col_w, 8, 12),
+                        measure(fld['eligibility'], col_w, 8, 12))
+            second = max(measure(fld['geography'], col_w, 7.9, 11.8),
+                         measure(fld['warning'], col_w, 7.9, 11.8))
+            return top-44-title_height-10-intro_height-11-19-7-first-28-7-second
+
+        btn_y = y+14
+        if content_bottom() < btn_y+31:
+            # Unusually verbose headings must never prevent publishing a PDF.
+            label = fit_lines(label, width-32, 10.5, 15.2, 2, bold)
+            summary = fit_lines(summary, width-32, 8.6, 13, 1)
+        if content_bottom() < btn_y+31:
+            fld = {k: fit_lines(v, col_w, 8.0 if k in ('funding','eligibility') else 7.9,
+                                 12 if k in ('funding','eligibility') else 11.8, 1)
+                   for k,v in fld.items()}
+        if content_bottom() < btn_y+31:
+            raise RuntimeError(f'Картка {number}: недостатньо місця навіть після скорочення тексту')
+
+        title_h = pdraw(label, x+16, top-44, width-32, 10.5, 15.2, bold, NAVY)
+        summary_top = top-44-title_h-10
+        intro_h = pdraw(summary, x+16, summary_top, width-32, 8.6, 13, font, DARK)
+        divider = summary_top-intro_h-11
+        c.setStrokeColor(LINE)
+        c.line(x+16, divider, x+width-16, divider)
         ylab = divider-19
         draw_text('ФІНАНСУВАННЯ',left,ylab,7.1,bold,GREY)
         draw_text('ХТО МОЖЕ ПОДАТИСЯ',right,ylab,7.1,bold,GREY)
-        fh = pdraw(fields['funding'],left,ylab-7,col_w,8.0,12,font,DARK)
-        eh = pdraw(fields['eligibility'],right,ylab-7,col_w,8.0,12,font,DARK)
+        fh = pdraw(fld['funding'],left,ylab-7,col_w,8.0,12,font,DARK)
+        eh = pdraw(fld['eligibility'],right,ylab-7,col_w,8.0,12,font,DARK)
         ylab2 = ylab-13-max(fh,eh)-15
         draw_text('ГЕОГРАФІЯ / УКРАЇНА',left,ylab2,7.1,bold,GREY)
         draw_text('ВАЖЛИВО',right,ylab2,7.1,bold,GREY)
-        gh = pdraw(fields['geography'],left,ylab2-7,col_w,7.9,11.8,font,DARK)
-        wh = pdraw(fields['warning'],right,ylab2-7,col_w,7.9,11.8,font,NAVY)
-        lowest = ylab2-7-max(gh,wh)
-        btn_y = y+14
-        if lowest < btn_y+31:
-            raise RuntimeError(f'Картка {number} переповнена ({lowest:.0f} vs {btn_y+31:.0f})')
+        pdraw(fld['geography'],left,ylab2-7,col_w,7.9,11.8,font,DARK)
+        pdraw(fld['warning'],right,ylab2-7,col_w,7.9,11.8,font,NAVY)
         c.setFillColor(TEAL)
         c.roundRect(x+16, btn_y, width-32, 27, 6, fill=1, stroke=0)
         c.setFillColor(WHITE)
@@ -1022,8 +1123,10 @@ def pdf_catalog(path: Path, title: str, topic: str, rows: list[dict], stamp: dat
             idx=p*2+slot
             if idx>=len(rows):
                 break
-            ypos=H-(163+117*slot)*mm
-            card(rows[idx],idx+1,20*mm,ypos,W-40*mm,110*mm)
+            # Leave a clear footer zone: the second card must not touch
+            # the page-number line at 17 mm from the lower edge.
+            ypos=H-(161+113*slot)*mm
+            card(rows[idx],idx+1,20*mm,ypos,W-40*mm,106*mm)
         c.showPage()
     c.save()
 
@@ -1352,7 +1455,7 @@ def make_one_catalog(state: dict, rows: list[dict], *, dry_run=False) -> bool:
                                "channel_url": channel_url, "pdf": str(pdf),
                                "post_ids": [r["id"] for r in picked],
                                "published_on": now.astimezone(KYIV).date().isoformat(),
-                               "valid_until": min(r["_deadline"] for r in picked)})
+                               "valid_until": max(r["_deadline"] for r in picked)})
     state["last_post_at"] = now.isoformat()
     state["queue"].pop(0)
     state.pop("ai_review", None)
