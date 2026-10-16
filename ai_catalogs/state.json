@@ -67,5 +67,6 @@
     }
   ],
   "last_post_at": "2026-10-16T17:18:56.242934+00:00",
-  "bot_profile_version": 1
+  "bot_profile_version": 1,
+  "gateway_seen_ids": []
 }
