@@ -1,0 +1,50 @@
+name: NGO Grants - Public Worker HTTP check
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Check public Worker URL without secrets or data changes
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import re
+          import urllib.error
+          import urllib.request
+
+          # This is only a public health endpoint. No tokens are supplied.
+          url = 'https://ngo-grants-instant-bot.oleh-protasoff.workers.dev/health'
+          tests = [
+              ('Python default User-Agent', {}),
+              ('Browser User-Agent', {
+                  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/129.0.0.0 Safari/537.36',
+                  'Accept': 'application/json',
+              }),
+              ('GitHub HTTP client User-Agent', {'User-Agent': 'NGO-Grants-Healthcheck/1.0', 'Accept': 'application/json'}),
+          ]
+          for name, headers in tests:
+              req = urllib.request.Request(url, headers=headers)
+              try:
+                  with urllib.request.urlopen(req, timeout=15) as res:
+                      status, h, body = res.status, res.headers, res.read(5000)
+              except urllib.error.HTTPError as exc:
+                  status, h, body = exc.code, exc.headers, exc.read(5000)
+              except Exception as exc:
+                  print(f'{name}: NETWORK ERROR ({type(exc).__name__})')
+                  continue
+              print(f'{name}: HTTP {status}; server={h.get("server", "-")}; cf-ray={h.get("cf-ray", "-")}; content-type={h.get("content-type", "-")}; cf-mitigated={h.get("cf-mitigated", "-")}')
+              if status == 200:
+                  print('  Worker response:', 'correct' if b'NGO Grants Instant UI' in body else 'unexpected')
+              else:
+                  errcodes = re.findall(rb'Error\s+(10\d\d|11\d\d)|(?:error[_ -]?code)[\s\":]+(10\d\d)', body, re.I)
+                  if errcodes:
+                      print('  Cloudflare error code:', (errcodes[0][0] or errcodes[0][1]).decode('ascii'))
+          print('Read-only check complete. No Telegram requests, AI calls, or D1 writes.')
+          PY
