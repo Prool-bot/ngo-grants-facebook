@@ -321,6 +321,16 @@ def strict_topic_match(query: str, post_text: str) -> bool:
 def rank_posts(rows: list[dict], query: str, keywords: list[str], now: date | None = None) -> list[dict]:
     now = now or today_kyiv()
     stems = variants(query, keywords)
+    # The Ukrainian phrases “розробка програмного забезпечення”, “створення
+    # застосунків”, “розроблення відеоігор” and “цифрові платформи” refer to
+    # the same fundable software-development family. Exact-word matching used
+    # to hide these opportunities *before* the AI could review them.
+    if software_request(query):
+        stems = sorted(set(stems) | {
+            'розроблен', 'розробк', 'програмн', 'software', 'open-source',
+            'застосунк', 'додатк', 'цифров', 'платформ', 'відеоігор',
+            'криптограф', 'код',
+        })
     key = [s for s in stems if len(s) >= 3]
     selected = []
     for row in rows:
@@ -424,6 +434,13 @@ def candidate_evidence(post_text: str, query: str, max_lines: int = 4) -> str:
         focus = DOCUMENTARY_TERMS
     elif film_request(query):
         focus = FILM_TERMS
+    elif software_request(query):
+        # A post need not literally repeat “програмного забезпечення”.
+        # Show the AI concrete funded activities such as mobile applications,
+        # open-source code and games, including those later in the source.
+        focus = ('розроб', 'програм', 'software', 'open-source', 'застосунк',
+                 'додатк', 'платформ', 'цифров', 'відеоігор', 'криптограф',
+                 'код', 'інтерактивн')
     else:
         focus = tuple(w for w in theme_tokens(query) if len(w) >= 4)
     if not focus:
@@ -471,6 +488,10 @@ def ai_select(query: str, ranked: list[dict]) -> list[int]:
         "Для запиту про розроблення програмного забезпечення обирай лише ті, що "
         "підтримують створення коду, застосунків, цифрових інструментів, платформ "
         "або ігор, а не просто інновації, енергетику чи медицину. "
+        "Коли вступ описує широку тему, перевіряй поле evidence_from_post: "
+        "розроблення застосунків, ігор або коду може бути допустимим підвидом "
+        "мистецької чи медичної програми. Водночас сама згадка розробників "
+        "у переліку заявників НЕ доводить фінансування створення ПЗ. "
         "Нічого не вигадуй; не додавати ID, яких немає у вхідних даних. "
         "Поверни тільки JSON {\"selected_ids\":[числові ID]}. Якщо релевантних немає, []."
     )
@@ -851,6 +872,16 @@ def catalog_card_fields(post_text: str) -> dict[str, str]:
             and not re.search(r'не\s+(?:мож\w*|допуска\w*|підход\w*)', x, re.I)), '')
         geography = ukrainian if not re.search(r'\b\d{1,2}:\d{2}\b', ukrainian) else ''
     warning = '; '.join(take_block('warning')[:2])
+    if not warning:
+        # Especially important for international calls where the channel
+        # expressly tells Ukrainian applicants to check eligibility with the
+        # organizer, but has no separate “Важливо” heading.
+        for raw_line in raw:
+            v = plain(raw_line)
+            if (re.search(r'перед поданням.{0,45}(?:україн|заявник|учасник)', v, re.I)
+                and re.search(r'підтвердж|уточн|прийнятн|відповідн', v, re.I)):
+                warning = v
+                break
 
     return {
         'summary': summary or 'Опис і повні умови — в публікації каналу.',
@@ -959,16 +990,22 @@ def pdf_catalog(path: Path, title: str, topic: str, rows: list[dict], stamp: dat
         c.drawCentredString(x+w/2, y+(h-size)/2+1, pdf_safe_title(label))
 
     def tag_of(text: str) -> str:
-        first = re.sub(r'https?://\S+', '', text[:1000]).casefold()
+        # The category should describe the *funded project*, not a skill
+        # mentioned far down in the eligibility list (e.g. game designers
+        # eligible for a broader digital-art residency).
+        first = re.sub(r'https?://\S+', '', text[:600]).casefold()
+        title_line = next((x.casefold() for x in text.splitlines() if x.strip()), '')
+        if 'onx seeds' in title_line or ('мистецтв' in first and 'цифров' in first):
+            return 'ЦИФРОВЕ МИСТЕЦТВО'
         if any(k in first for k in ('відкритим кодом', 'open-source', 'відкритого коду')):
             return 'ВІДКРИТИЙ КОД'
         if any(k in first for k in ('кібербезпек', 'криптограф', 'шифруван')):
             return 'ЦИФРОВА БЕЗПЕКА'
-        if any(k in first for k in ('відеоігор', 'ігор', 'video games')):
+        if any(k in first for k in ('відеоігор', 'video games', 'розроблення ігор')):
             return 'РОЗРОБЛЕННЯ ІГОР'
         if any(k in first for k in ('штучн', 'машинного навчання', 'software', 'програмн')):
             return 'ПРОГРАМНІ РІШЕННЯ'
-        if any(k in first for k in ('цифрових', 'цифрові', 'платформ')):
+        if any(k in first for k in ('цифров', 'платформ')):
             return 'ЦИФРОВІ ІНСТРУМЕНТИ'
         return 'ГРАНТОВА МОЖЛИВІСТЬ'
 
