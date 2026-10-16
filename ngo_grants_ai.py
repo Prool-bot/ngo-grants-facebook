@@ -438,8 +438,24 @@ def http_json(url: str, data: dict | None = None, headers: dict | None = None, t
     try:
         with urllib.request.urlopen(req, timeout=timeout) as resp:
             result = json.loads(resp.read())
-    except (urllib.error.URLError, ValueError) as exc:
-        raise RuntimeError("Мережевий запит не завершено успішно") from exc
+    except urllib.error.HTTPError as exc:
+        # urllib's HTTPError also subclasses URLError. Inspect the API error
+        # WITHOUT exposing the request URL, which contains the bot secret.
+        detail = ""
+        try:
+            reply = json.loads(exc.read().decode("utf-8", errors="replace"))
+            if "api.telegram.org/" in url and isinstance(reply, dict):
+                detail = str(reply.get("description", ""))
+        except (ValueError, UnicodeError, OSError):
+            pass
+        detail = re.sub(r"[\r\n\t]", " ", detail).strip()[:210]
+        status = f"HTTP {exc.code}"
+        raise RuntimeError(f"{status}: {detail}" if detail else status) from None
+    except urllib.error.URLError as exc:
+        # Never include the exception's URL: Telegram puts the secret in it.
+        raise RuntimeError(f"Мережева помилка ({type(exc.reason).__name__})") from None
+    except ValueError:
+        raise RuntimeError("API повернув некоректну JSON-відповідь") from None
     if result.get("ok") is False or result.get("success") is False:
         raise RuntimeError("API відмовив у виконанні запиту")
     return result
@@ -449,7 +465,11 @@ def tg(method: str, params: dict) -> dict:
     token = os.environ.get("NGO_GRANTS_AI_BOT_TOKEN", "").strip()
     if not token:
         raise RuntimeError("Секрет NGO_GRANTS_AI_BOT_TOKEN не задано")
-    return http_json(f"https://api.telegram.org/bot{token}/{method}", data=params)
+    try:
+        return http_json(f"https://api.telegram.org/bot{token}/{method}", data=params)
+    except RuntimeError as exc:
+        # This method name is safe to log; URL/token, payload, and chat IDs are not.
+        raise RuntimeError(f"Telegram {method}: {exc}") from None
 
 
 # Native Telegram interface: no website, Web App, hosting or paid platform.
