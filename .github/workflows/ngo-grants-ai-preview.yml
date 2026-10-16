@@ -1,0 +1,130 @@
+name: NGO Grants - AI preview (no publication)
+
+on:
+  workflow_dispatch:
+    inputs:
+      topic:
+        description: 'Optional topic. Leave blank to preview the first request in the queue.'
+        required: false
+        type: string
+        default: ''
+
+# Read only: the preview cannot publish to Telegram or modify the repository.
+permissions:
+  contents: read
+
+jobs:
+  preview:
+    name: Preview catalog with Cloudflare AI
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
+      CF_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
+      PREVIEW_TOPIC: ${{ inputs.topic }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install PDF dependencies
+        run: python -m pip install reportlab==4.4.9 pypdf==5.9.0
+      - name: Build AI preview from channel archive only
+        run: |
+          python -u - <<'PY'
+          import json
+          import os
+          from datetime import datetime
+          from pathlib import Path
+          from zoneinfo import ZoneInfo
+          import ngo_grants_ai as app
+          from pypdf import PdfReader
+
+          if not os.environ.get('CF_ACCOUNT_ID') or not os.environ.get('CF_API_TOKEN'):
+              raise SystemExit('Cloudflare AI secrets are unavailable.')
+
+          topic = os.environ.get('PREVIEW_TOPIC', '').strip()
+          if not topic:
+              state = app.load_state()
+              if not state.get('queue'):
+                  raise SystemExit('Queue is empty. Fill in the topic field to preview another topic.')
+              topic = state['queue'][0]['topic']
+          topic = app.sanitize_user_text(topic)
+          if not 10 <= len(topic) <= 250:
+              raise SystemExit('Topic must be 10-250 characters long.')
+
+          print('Topic:', topic)
+          title, keywords = app.ai_expand(topic)
+          posts = app.read_archive()
+          ranked = app.rank_posts(posts, topic, keywords)
+          print('Archived posts:', len(posts), 'Preselected candidates:', len(ranked))
+          if not ranked:
+              raise SystemExit('No posts with explicit future deadlines match this topic.')
+          selected_ids = app.ai_select(topic, ranked)
+          # Use only returned post IDs and exact channel archive content.
+          by_id = {row['id']: row for row in ranked}
+          selected = [by_id[i] for i in selected_ids if i in by_id]
+          print('Cloudflare AI selected:', len(selected))
+          if not selected:
+              raise SystemExit('Cloudflare AI found no relevant opportunities. Nothing is published.')
+
+          path = Path('output/ngo-grants-ai-preview.pdf')
+          stamp = datetime.now(ZoneInfo('Europe/Kyiv')).date()
+          app.pdf_catalog(path, title, topic, selected, stamp)
+
+          # Confirm all opportunity hyperlinks are channel links; the only
+          # optional extra targets are our own bot and channel landing page.
+          allowed_prefixes = (
+              'https://t.me/ngo_grants',
+              'https://t.me/ngogratsAI_bot',
+          )
+          all_links = []
+          for page in PdfReader(str(path)).pages:
+              for annot_ref in page.get('/Annots', []):
+                  annot = annot_ref.get_object()
+                  uri = annot.get('/A', {}).get('/URI')
+                  if uri:
+                      uri = str(uri)
+                      all_links.append(uri)
+                      if not uri.startswith(allowed_prefixes):
+                          raise SystemExit('Unexpected external PDF link; preview rejected.')
+          targets = {f'https://t.me/ngo_grants/{row["id"]}' for row in selected}
+          if not targets.issubset(set(all_links)):
+              raise SystemExit('Some catalog entries have no clickable channel link.')
+
+          preview = {
+              'source': 'Only archived posts from @ngo_grants',
+              'status': 'PREVIEW ONLY - NOTHING PUBLISHED',
+              'topic': topic,
+              'title': title,
+              'date': stamp.isoformat(),
+              'archive_post_count': len(posts),
+              'preselected_candidates': len(ranked),
+              'selected_count': len(selected),
+              'entries': [
+                  {'post_id': row['id'],
+                   'title': row['_title'],
+                   'deadline_from_channel_post': row['_deadline'],
+                   'url': f'https://t.me/ngo_grants/{row["id"]}'}
+                  for row in selected
+              ],
+          }
+          Path('output/ngo-grants-ai-preview.json').write_text(
+              json.dumps(preview, ensure_ascii=False, indent=2) + '\n', encoding='utf-8'
+          )
+          print('Preview ready; pages:', len(PdfReader(str(path)).pages),
+                'link targets:', len(targets), 'PDF bytes:', path.stat().st_size)
+          print('No Telegram bot token is provided to this job; publication is impossible.')
+          PY
+      - name: Save preview PDF and selection report
+        uses: actions/upload-artifact@v4
+        with:
+          name: ngo-grants-ai-preview
+          path: |
+            output/ngo-grants-ai-preview.pdf
+            output/ngo-grants-ai-preview.json
+          if-no-files-found: error
+          retention-days: 7
