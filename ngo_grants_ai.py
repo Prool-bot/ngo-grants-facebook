@@ -452,8 +452,151 @@ def tg(method: str, params: dict) -> dict:
     return http_json(f"https://api.telegram.org/bot{token}/{method}", data=params)
 
 
-def message(chat_id: int, text: str) -> None:
-    tg("sendMessage", {"chat_id": chat_id, "text": text[:4000], "disable_web_page_preview": True})
+# Native Telegram interface: no website, Web App, hosting or paid platform.
+# Buttons and ForceReply are standard Bot API reply markups.
+UI_ORDER = "🔎 Замовити каталог"
+UI_CATALOGS = "📚 Готові каталоги"
+UI_HELP = "❓ Як користуватися"
+UI_EXAMPLES = "💡 Приклади тем"
+UI_STATUS = "⏳ Стан черги"
+BOT_PROFILE_VERSION = 1
+
+UI_KEYBOARD = {
+    "keyboard": [
+        [{"text": UI_ORDER}, {"text": UI_CATALOGS}],
+        [{"text": UI_HELP}, {"text": UI_EXAMPLES}],
+        [{"text": UI_STATUS}],
+    ],
+    "resize_keyboard": True,
+    "is_persistent": True,
+    "input_field_placeholder": "Напр.: гранти для музеїв України",
+}
+UI_TOPIC_INPUT = {
+    "force_reply": True,
+    "input_field_placeholder": "Напр.: гранти на екологічні проєкти",
+}
+
+
+def message(chat_id: int, text: str, *, reply_markup: dict | None = None,
+            formatted: bool = False) -> None:
+    params = {"chat_id": chat_id, "text": text[:4000], "disable_web_page_preview": True}
+    if reply_markup is not None:
+        params["reply_markup"] = reply_markup
+    if formatted:
+        params["parse_mode"] = "HTML"
+    tg("sendMessage", params)
+
+
+def show_menu(chat_id: int) -> None:
+    message(chat_id,
+            "🤖 <b>NGO Grants — тематичні каталоги грантів</b>\n\n"
+            "Шукаєте гранти, стипендії чи мистецькі конкурси? "
+            "Напишіть тему, і ШІ підбере матеріали з уже опублікованих дописів @ngo_grants.\n\n"
+            "🟢 <b>Безкоштовно для підписників</b>\n"
+            "• 1 тематичний запит на людину за добу.\n"
+            "• До 3 нових PDF-каталогів на добу.\n"
+            "• PDF публікуємо у каналі для всіх, не надсилаємо приватно.\n\n"
+            "👇 Оберіть кнопку нижче або просто напишіть свою тему.\n"
+            "⏳ Бот перевіряє повідомлення приблизно раз на 15 хвилин; відповідь не миттєва.",
+            reply_markup=UI_KEYBOARD, formatted=True)
+
+
+def show_help(chat_id: int) -> None:
+    message(chat_id,
+            "📖 <b>Як замовити тематичний каталог?</b>\n\n"
+            "<b>Крок 1.</b> Натисніть «🔎 Замовити каталог» або напишіть тему самостійно.\n"
+            "<b>Крок 2.</b> Укажіть напрям і, за потреби, для кого шукаєте гранти.\n"
+            "<b>Крок 3.</b> Отримайте підтвердження прийняття запиту.\n"
+            "<b>Крок 4.</b> Перегляньте результат у @ngo_grants або через «📚 Готові каталоги».\n\n"
+            "✅ Вдалий приклад: «Гранти для документального кіно українських режисерів».\n"
+            "❌ Не варто: «Знайди щось цікаве» чи повідомлення з особистими даними.\n\n"
+            "🔎 Пошук ведеться тільки серед публікацій каналу — без нового пошуку в інтернеті. "
+            "Перед поданням заявки перевіряйте першоджерело у відповідному дописі.\n"
+            "⏳ Через безкоштовний планувальник відповідь може надходити із затримкою.",
+            reply_markup=UI_KEYBOARD, formatted=True)
+
+
+def show_examples(chat_id: int) -> None:
+    message(chat_id,
+            "💡 <b>Приклади тем для запиту</b>\n\n"
+            "🎬 Гранти для документального кіно\n"
+            "🏛 Гранти для громадських організацій у сфері культури\n"
+            "🌿 Фінансування екологічних проєктів в Україні\n"
+            "🔬 Міжнародні стипендії для українських науковців\n"
+            "🎨 Резиденції для українських художників\n"
+            "📚 Гранти на неформальну освіту молоді\n\n"
+            "✍️ <b>Надішліть свою конкретну тему звичайним текстовим повідомленням.</b> "
+            "Кнопка нижче відкриє поле з підказкою.",
+            reply_markup=UI_KEYBOARD, formatted=True)
+
+
+def prompt_for_topic(chat_id: int) -> None:
+    message(chat_id,
+            "✍️ <b>Тема нового каталогу</b>\n\n"
+            "Напишіть одним повідомленням, <b>які можливості шукаєте</b>. "
+            "За бажанням додайте сферу, цільову групу чи географію.\n\n"
+            "📝 Приклад: <i>Гранти для незалежних українських медіа</i>\n\n"
+            "⚠️ Не вказуйте ПІБ, телефони, адреси, електронну пошту чи інші приватні дані.\n"
+            "Надсилання теми — це <b>один запит на добу</b>; натискання кнопок ліміт не витрачає.\n"
+            "⏳ Повідомлення обробляються приблизно кожні 15 хвилин.",
+            reply_markup=UI_TOPIC_INPUT, formatted=True)
+
+
+def show_catalogs(chat_id: int, state: dict) -> None:
+    published = state.get("published", [])[-8:][::-1]
+    if not published:
+        message(chat_id, "📚 Поки що каталогів немає.\nЩоб замовити перший, натисніть «🔎 Замовити каталог».",
+                reply_markup=UI_KEYBOARD)
+        return
+    lines = ["📚 <b>Готові PDF-каталоги у @ngo_grants</b>\n"]
+    for item in published:
+        title = escape(str(item.get("title", "Тематичний каталог"))[:120])
+        url = str(item.get("channel_url", ""))
+        if re.fullmatch(r"https://t\.me/ngo_grants/\d+", url):
+            lines.append(f"• <a href=\"{url}\">{title}</a>")
+    lines.append("\nОберіть каталог і відкрийте PDF безпосередньо у каналі.")
+    message(chat_id, "\n".join(lines), reply_markup=UI_KEYBOARD, formatted=True)
+
+
+def show_status(chat_id: int, state: dict) -> None:
+    count = len(state.get("queue", []))
+    message(chat_id,
+            f"⏳ <b>Черга тематичних каталогів</b>\n\n"
+            f"Очікують підготовки: <b>{count}</b> запит(ів).\n"
+            "До 3 нових каталогів на добу, щонайменше 2 години між публікаціями.\n"
+            "Це загальна черга — особисті дані учасників не показуються.\n\n"
+            "📚 Готові каталоги можна переглянути кнопкою нижче.",
+            reply_markup=UI_KEYBOARD, formatted=True)
+
+
+def configure_bot_profile(state: dict) -> None:
+    """One-time lightweight Telegram setup; consumes no AI tokens or credits.
+
+    Do not stop the catalog runner if a Telegram profile edit fails. Retry on
+    the next scheduled run; only mark configured after all calls succeed.
+    """
+    if state.get("bot_profile_version") == BOT_PROFILE_VERSION:
+        return
+    commands = [
+        {"command": "start", "description": "Головне меню"},
+        {"command": "request", "description": "Замовити каталог грантів"},
+        {"command": "catalogs", "description": "Переглянути готові каталоги"},
+        {"command": "examples", "description": "Приклади тем для пошуку"},
+        {"command": "help", "description": "Як користуватися ботом"},
+        {"command": "status", "description": "Перевірити загальну чергу"},
+    ]
+    try:
+        tg("setMyCommands", {"commands": commands})
+        tg("setMyDescription", {"description":
+            "Безкоштовний ШІ-помічник каналу @ngo_grants. Замовляйте тематичні PDF-каталоги "
+            "із раніше опублікованих грантових можливостей. Один запит на добу від підписника, "
+            "до трьох нових каталогів щодня для всіх учасників каналу."})
+        tg("setMyShortDescription", {"short_description":
+            "Тематичні PDF-каталоги грантів із @ngo_grants — безкоштовно для підписників."})
+    except RuntimeError as exc:
+        print(f"Не вдалося оновити опис бота; спробуємо наступного разу: {str(exc)[:100]}", file=sys.stderr)
+        return
+    state["bot_profile_version"] = BOT_PROFILE_VERSION
 
 
 def upload_pdf(file: Path, caption: str) -> int:
@@ -590,51 +733,83 @@ def handle_update(update: dict, state: dict, token: str) -> None:
         return
     chat_id = chat["id"]
     txt = (msg.get("text") or "").strip()
-    if txt.startswith("/start") or txt == "/help":
-        message(chat_id, "🤖 NGO Grants — тематичні PDF-каталоги з матеріалів @ngo_grants.\n\n"
-                "Напишіть тему звичайним повідомленням, наприклад: «Гранти для документального кіно». "
-                "Один запит на добу. Каталоги публікуються для всіх у @ngo_grants, не в особисті повідомлення. "
-                "Використовуються тільки вже опубліковані дописи каналу.")
+    cmd = txt.split(maxsplit=1)[0].split("@")[0].lower() if txt else ""
+
+    # Navigation actions are NEVER counted as a request.
+    if cmd in ("/start", "/menu"):
+        show_menu(chat_id)
         return
-    if txt == "/catalogs":
-        links = [f"• {x['title']}: {x['channel_url']}" for x in state.get("published", [])[-8:]][::-1]
-        message(chat_id, "Останні каталоги:\n" + ("\n".join(links) if links else "Поки немає опублікованих каталогів."))
+    if cmd == "/help" or txt == UI_HELP:
+        show_help(chat_id)
+        return
+    if cmd == "/examples" or txt == UI_EXAMPLES:
+        show_examples(chat_id)
+        return
+    if cmd == "/request" or txt == UI_ORDER:
+        prompt_for_topic(chat_id)
+        return
+    if cmd == "/catalogs" or txt == UI_CATALOGS:
+        show_catalogs(chat_id, state)
+        return
+    if cmd == "/status" or txt == UI_STATUS:
+        show_status(chat_id, state)
+        return
+    if cmd == "/cancel":
+        show_menu(chat_id)
         return
     if txt.startswith("/"):
-        message(chat_id, "Команди: /start, /help, /catalogs. Або напишіть тему каталогу текстом.")
+        message(chat_id, "Невідома команда. Натисніть кнопку в меню або введіть /help.",
+                reply_markup=UI_KEYBOARD)
         return
+    if not txt:
+        message(chat_id, "Надішліть тему одним текстовим повідомленням. Натисніть «🔎 Замовити каталог».",
+                reply_markup=UI_KEYBOARD)
+        return
+
     cleaned = sanitize_user_text(txt)
-    if len(cleaned) < 10 or len(cleaned) > 250 or cleaned.count("[") > 1:
-        message(chat_id, "Напишіть коротку тему каталогу (10–250 символів), без номерів телефонів, адрес і посилань.")
+    if (len(cleaned) < 10 or len(cleaned) > 250 or
+        cleaned.count("[") > 1 or "[посилання]" in cleaned or
+        "[пошта]" in cleaned or "[телефон]" in cleaned or "[ім’я]" in cleaned):
+        message(chat_id,
+                "⚠️ Уточніть тему (10–250 символів), без посилань і контактних даних. "
+                "Наприклад: «Гранти для екологічних проєктів в Україні».",
+                reply_markup=UI_KEYBOARD)
         return
     existing = related_existing(cleaned, state)
     if existing:
-        message(chat_id, "📚 Схожий актуальний каталог уже опубліковано для всіх:\n" + existing["channel_url"])
+        message(chat_id, "📚 Схожий актуальний каталог уже опубліковано для всіх:\n" + existing["channel_url"],
+                reply_markup=UI_KEYBOARD)
         return
     if same_in_queue(cleaned, state):
-        message(chat_id, "📨 Схожий запит уже є в черзі. Після підготовки каталог з'явиться в @ngo_grants.")
+        message(chat_id, "📨 Схожий запит уже є в черзі. Каталог з'явиться в @ngo_grants.",
+                reply_markup=UI_KEYBOARD)
         return
-    # The channel admin bot can check membership; only channel subscribers may order.
+    # The channel admin bot can check membership; only subscribers may order.
     user_id = msg.get("from", {}).get("id", chat_id)
     try:
         membership = tg("getChatMember", {"chat_id": "@" + CHANNEL, "user_id": user_id}).get("result", {})
     except RuntimeError:
-        message(chat_id, "⏳ Не вдалося перевірити підписку на @ngo_grants. Спробуйте трохи пізніше.")
+        message(chat_id, "⏳ Підписку на @ngo_grants не вдалося перевірити. Спробуйте пізніше.",
+                reply_markup=UI_KEYBOARD)
         return
     if membership.get("status") not in ("creator", "administrator", "member") and not (
             membership.get("status") == "restricted" and membership.get("is_member")):
-        message(chat_id, "Щоб замовити добірку, спочатку підпишіться на @ngo_grants: https://t.me/ngo_grants")
+        message(chat_id, "Щоб замовити добірку, підпишіться на @ngo_grants: https://t.me/ngo_grants",
+                reply_markup=UI_KEYBOARD)
         return
     hid = user_hash(user_id, token)
     today = today_kyiv().isoformat()
     if state["users_days"].get(hid) == today:
-        message(chat_id, "⏳ Один запит на добу. Спробуйте завтра або перегляньте /catalogs.")
+        message(chat_id, "⏳ Ви вже використали запит на сьогодні. Спробуйте завтра або перегляньте /catalogs.",
+                reply_markup=UI_KEYBOARD)
         return
     state["users_days"][hid] = today
     state["queue"].append({"id": int(update["update_id"]), "topic": cleaned,
                            "requested_at": datetime.now(timezone.utc).isoformat()})
-    message(chat_id, "✅ Запит прийнято. ШІ перевірить архів публікацій @ngo_grants і попередні каталоги. "
-            "Готовий PDF буде оприлюднено у каналі для всіх (до трьох каталогів на добу).")
+    message(chat_id,
+            "✅ Запит прийнято! ШІ перевірить архів публікацій @ngo_grants та попередні каталоги. "
+            "Новий PDF буде опубліковано для всіх у каналі (до 3 каталогів на добу). "
+            "Перевірте /catalogs пізніше.", reply_markup=UI_KEYBOARD)
 
 
 def accept_requests(state: dict, token: str) -> None:
@@ -736,6 +911,7 @@ def main():
     if not token:
         raise RuntimeError("GitHub Secret NGO_GRANTS_AI_BOT_TOKEN відсутній")
     state = load_state()
+    configure_bot_profile(state)
     accept_requests(state, token)
     save_state(state)
     # Safe rollout switch: intake works before Cloudflare AI is connected.
