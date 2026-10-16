@@ -150,22 +150,27 @@ async def sync_comments(days=45, full=False):
     )
     fetched, scanned = {}, set()
     try:
+        print("Перевірка: підключення до Telegram...", flush=True)
         await client.connect()
         if not await client.is_user_authorized():
             raise RuntimeError("Telegram session not authorized")
+        print("Перевірка: Telegram-авторизація підтверджена.", flush=True)
         channel = await client.get_entity(CHANNEL)
         if not isinstance(channel, Channel) or not channel.broadcast or (channel.username or "").casefold() != CHANNEL:
             raise RuntimeError("Unexpected channel")
+        print("Перевірка: канал знайдено. Шукаю прив'язану групу обговорень...", flush=True)
         info = await client(GetFullChannelRequest(channel))
         group_id = getattr(info.full_chat, "linked_chat_id", None)
         group = next((chat for chat in info.chats if chat.id == group_id), None)
         if not group_id or not isinstance(group, Channel) or not group.megagroup:
             raise RuntimeError("No linked discussion megagroup")
+        print("Перевірка: групу обговорень знайдено.", flush=True)
         discussion_username = getattr(group, "username", None)
         if not discussion_username:
             raise RuntimeError("Private discussion group: public GitHub archive disabled")
         if old_meta.get("discussion_username") and old_meta["discussion_username"].casefold() != discussion_username.casefold():
             raise RuntimeError("Linked discussion group changed")
+        print("Перевірка: група публічна. Починаю читання коментарів...", flush=True)
         async for post in client.iter_messages(channel, limit=None, wait_time=1):
             if not full and post.date < cutoff:
                 break
@@ -233,6 +238,19 @@ if __name__ == "__main__":
         main()
     except Exception as exc:
         # Do not expose Telegram responses, identities or credentials in public logs.
-        print(f"Помилка читання коментарів: {type(exc).__name__}. Перевірте доступ.",
+        # Only explicitly known constant error messages may enter public Actions logs.
+        # Never print raw API responses, Telegram identities, or secret values.
+        safe_reasons = {
+            "Telegram session not authorized": "Telegram-сесія потребує повторної авторизації.",
+            "Unexpected channel": "Отриманий канал не збігається з @ngo_grants.",
+            "No linked discussion megagroup": "Telegram не повернув пов'язану групу обговорень.",
+            "Private discussion group: public GitHub archive disabled":
+                "Прив'язана група приватна. Публічний GitHub-архів коментарів заборонений.",
+            "Linked discussion group changed": "Змінилася прив'язана група обговорень.",
+        }
+        for env_name in ("TELEGRAM_API_ID", "TELEGRAM_API_HASH", "TELEGRAM_SESSION"):
+            safe_reasons[f"Missing secret: {env_name}"] = f"Відсутній секрет GitHub: {env_name}."
+        reason = safe_reasons.get(str(exc)) if isinstance(exc, RuntimeError) else None
+        print("Помилка читання коментарів: " + (reason or type(exc).__name__),
               file=sys.stderr)
         sys.exit(1)
