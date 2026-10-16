@@ -895,7 +895,13 @@ def gateway_api(path: str, data: dict | None = None) -> dict:
     if path not in ("/internal/pending", "/internal/sync", "/internal/activate", "/internal/deactivate"):
         raise ValueError("Unsupported gateway route")
     try:
-        return http_json(base + path, data=data, headers={"Authorization": "Bearer " + key}, timeout=30)
+        # Cloudflare 1010 blocks urllib's default "Python-urllib/..." identity.
+        # A descriptive fixed User-Agent was tested from GitHub Actions (HTTP 200).
+        return http_json(base + path, data=data, headers={
+            "Authorization": "Bearer " + key,
+            "User-Agent": "NGO-Grants-Healthcheck/1.0",
+            "Accept": "application/json",
+        }, timeout=30)
     except RuntimeError as exc:
         # Deliberately don't output gateway URL or bearer token.
         raise RuntimeError("Не вдалось обмінятися даними з ботом Cloudflare (" + type(exc).__name__ + ")") from None
