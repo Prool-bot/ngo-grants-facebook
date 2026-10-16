@@ -7,6 +7,10 @@ on:
         description: 'Тема пробного PDF без ШІ і без публікації (залиште пустою для роботи бота)'
         required: false
         type: string
+      instant_bot_action:
+        description: 'Порожньо = нормальна робота; activate = увімкнути миттєві відповіді; deactivate = відкотити'
+        required: false
+        type: string
   schedule:
     - cron: '*/15 * * * *'
 
@@ -34,28 +38,42 @@ jobs:
           python -m pip install reportlab==4.4.9 pypdf==5.9.0
           python -m unittest discover -s tests -v
       - name: Пробний PDF без Telegram та без ШІ
-        if: inputs.dry_run_topic != ''
+        if: inputs.dry_run_topic != '' && inputs.instant_bot_action != 'activate' && inputs.instant_bot_action != 'deactivate'
         env:
           DEMO_TOPIC: ${{ inputs.dry_run_topic }}
         run: python ngo_grants_ai.py --demo "$DEMO_TOPIC" --output output/demo-catalog.pdf
       - name: Зберегти пробний PDF для завантаження
-        if: inputs.dry_run_topic != ''
+        if: inputs.dry_run_topic != '' && inputs.instant_bot_action != 'activate' && inputs.instant_bot_action != 'deactivate'
         uses: actions/upload-artifact@v4
         with:
           name: ngo-grants-demo-catalog
           path: output/demo-catalog.pdf
           if-no-files-found: warn
           retention-days: 7
+      - name: Активувати миттєві відповіді Telegram (лише вручну, один раз)
+        if: inputs.instant_bot_action == 'activate'
+        env:
+          NGO_BOT_GATEWAY_URL: ${{ secrets.NGO_BOT_GATEWAY_URL }}
+          NGO_BOT_SYNC_SECRET: ${{ secrets.NGO_BOT_SYNC_SECRET }}
+        run: python ngo_grants_ai.py --gateway-activate
+      - name: Вимкнути Telegram webhook при аварійному відкаті
+        if: inputs.instant_bot_action == 'deactivate'
+        env:
+          NGO_BOT_GATEWAY_URL: ${{ secrets.NGO_BOT_GATEWAY_URL }}
+          NGO_BOT_SYNC_SECRET: ${{ secrets.NGO_BOT_SYNC_SECRET }}
+        run: python ngo_grants_ai.py --gateway-deactivate
       - name: Отримати запити та за дозволом опублікувати каталог
-        if: inputs.dry_run_topic == ''
+        if: inputs.dry_run_topic == '' && inputs.instant_bot_action != 'activate' && inputs.instant_bot_action != 'deactivate'
         env:
           NGO_GRANTS_AI_BOT_TOKEN: ${{ secrets.NGO_GRANTS_AI_BOT_TOKEN }}
           CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
           CF_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
           NGO_AI_AUTOPUBLISH: ${{ vars.NGO_AI_AUTOPUBLISH }}
+          NGO_BOT_GATEWAY_URL: ${{ secrets.NGO_BOT_GATEWAY_URL }}
+          NGO_BOT_SYNC_SECRET: ${{ secrets.NGO_BOT_SYNC_SECRET }}
         run: python -u ngo_grants_ai.py
       - name: Зберегти чергу та публічні PDF
-        if: always() && inputs.dry_run_topic == ''
+        if: always() && inputs.dry_run_topic == '' && inputs.instant_bot_action != 'activate' && inputs.instant_bot_action != 'deactivate'
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
@@ -73,3 +91,14 @@ jobs:
             sleep 3
           done
           exit 1
+      - name: Після збереження в GitHub оновити каталог і чергу в Cloudflare
+        if: success() && inputs.dry_run_topic == '' && inputs.instant_bot_action != 'activate'
+        env:
+          NGO_BOT_GATEWAY_URL: ${{ secrets.NGO_BOT_GATEWAY_URL }}
+          NGO_BOT_SYNC_SECRET: ${{ secrets.NGO_BOT_SYNC_SECRET }}
+        run: |
+          if [ -n "$NGO_BOT_GATEWAY_URL" ]; then
+            python ngo_grants_ai.py --gateway-sync
+          else
+            echo 'Cloudflare gateway not yet configured; skip sync'
+          fi
