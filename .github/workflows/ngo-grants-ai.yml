@@ -1,0 +1,75 @@
+name: NGO Grants — AI catalogs
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run_topic:
+        description: 'Тема пробного PDF без ШІ і без публікації (залиште пустою для роботи бота)'
+        required: false
+        type: string
+  schedule:
+    - cron: '*/15 * * * *'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: telegram-archive
+  cancel-in-progress: false
+
+jobs:
+  catalogs:
+    runs-on: ubuntu-latest
+    timeout-minutes: 14
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          persist-credentials: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Підготовка PDF і перевірка програми
+        run: |
+          python -m pip install reportlab==4.4.9 pypdf==5.9.0
+          python -m unittest discover -s tests -v
+      - name: Пробний PDF без Telegram та без ШІ
+        if: inputs.dry_run_topic != ''
+        env:
+          DEMO_TOPIC: ${{ inputs.dry_run_topic }}
+        run: python ngo_grants_ai.py --demo "$DEMO_TOPIC" --output output/demo-catalog.pdf
+      - name: Зберегти пробний PDF для завантаження
+        if: inputs.dry_run_topic != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: ngo-grants-demo-catalog
+          path: output/demo-catalog.pdf
+          if-no-files-found: warn
+          retention-days: 7
+      - name: Отримати запити та за дозволом опублікувати каталог
+        if: inputs.dry_run_topic == ''
+        env:
+          NGO_GRANTS_AI_BOT_TOKEN: ${{ secrets.NGO_GRANTS_AI_BOT_TOKEN }}
+          CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
+          CF_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
+          NGO_AI_AUTOPUBLISH: ${{ vars.NGO_AI_AUTOPUBLISH }}
+        run: python -u ngo_grants_ai.py
+      - name: Зберегти чергу та публічні PDF
+        if: always() && inputs.dry_run_topic == ''
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -- ai_catalogs/
+          if git diff --cached --quiet; then
+            echo 'Немає змін'
+            exit 0
+          fi
+          git commit -m 'Update NGO Grants AI catalog queue and public PDFs'
+          for i in 1 2 3; do
+            git pull --rebase origin main
+            if git push origin HEAD:main; then
+              exit 0
+            fi
+            sleep 3
+          done
+          exit 1
