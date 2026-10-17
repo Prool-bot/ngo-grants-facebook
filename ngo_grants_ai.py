@@ -27,7 +27,7 @@ import urllib.request
 from zoneinfo import ZoneInfo
 
 CHANNEL = "ngo_grants"
-BOT = "ngogratsAI_bot"
+BOT = "ngoGrantsAI_bot"
 KYIV = ZoneInfo("Europe/Kyiv")
 ARCHIVE = Path("archive/telegram")
 STATE_PATH = Path("ai_catalogs/state.json")
@@ -39,6 +39,10 @@ MIN_GAP_HOURS = 2
 # Review every candidate over successive scheduled runs to preserve free AI credits.
 AI_REVIEW_BATCH_SIZE = 12
 AI_REVIEW_BATCHES_PER_RUN = 3
+# Public status messages are independent of the 3-PDF/day quota.
+MAX_NO_RESULTS_PER_DAY = 3
+NO_RESULTS_REPEAT_DAYS = 7
+NO_RESULTS_HISTORY_DAYS = 45
 
 # Search expansions are transparent and checked only against the Telegram archive.
 GROUPS = [
@@ -330,6 +334,7 @@ GENERIC_INTENT_ROOTS = (
     "art", "cultur", "культур", "резиден", "виставк", "фестив", "дисциплін",
     "гуманітар", "гуман", "science", "науки", "наука", "інновац", "innovation",
     "digital", "design", "процес", "рішен", "практик",
+    "розвит", "develop", "growth", "створ", "україн", "област", "регіон",
 )
 
 
@@ -362,8 +367,51 @@ def _specific_terms(terms: list[str] | str) -> list[str]:
     return out
 
 
+def _query_region(query: str) -> str:
+    """An oblast named by the subscriber is a hard constraint, not a theme.
+
+    Derive it from the ORIGINAL wording so an LLM cannot silently omit it.
+    Five-letter prefix covers Полтавській/Полтавська (no geocoder needed).
+    """
+    q = unicodedata.normalize('NFKC', query).casefold()
+    match = re.search(r'([а-яіїєґ-]{5,})\s+(?:област[іьяю]|обл\.)', q)
+    return match.group(1)[:5] if match else ''
+
+
+def _educational_institution_request(query: str) -> bool:
+    """Educational *institutions* are different applicants from students."""
+    q = unicodedata.normalize('NFKC', query).casefold()
+    return bool(re.search(
+        r'(?:заклад\w*\s+(?:освіт\w*|навчальн\w*)|'
+        r'(?:освітн\w*|навчальн\w*)\s+заклад\w*|'
+        r'школ\w*|ліце\w*|гімназі\w*|університет\w*|коледж\w*)',q))
+
+
+def _query_topic_groups(query: str, applicant_only: bool = False) -> list[list[str]]:
+    """Fallback tight clauses drawn only from the subscriber's words.
+
+    Distinct activities separated with 'та'/commas are ALTERNATIVES (OR),
+    while words *within* a phrase must appear near each other (AND).
+    This does not mean an applicant constraint is an alternative topic.
+    """
+    if applicant_only:
+        return []
+    q = unicodedata.normalize('NFKC', query).casefold()
+    q = re.sub(r'[а-яіїєґ-]{5,}\s+(?:област[іьяю]|обл\.)', ' ', q)
+    parts = re.split(r'\s*[,;]\s*|\s+(?:та|й)\s+', q)
+    results = []
+    for part in parts:
+        stems = [t for t in _specific_terms(part)
+                 if not t.startswith(('розви','створ','покращ','впровад','украї',
+                                       'област','регіон'))]
+        # An explicitly compound subject is one clause, not two loose words.
+        if stems and stems not in results:
+            results.append(stems[:4])
+    return results[:5]
+
+
 def _semantic_plan(query: str, plan: dict) -> dict:
-    """Normalize untrusted AI intent. Query domain stays authoritative."""
+    """Normalize AI intent with hard original-query constraints and phrase groups."""
     if not isinstance(plan, dict):
         raise ValueError('ШІ не повернув структурований зміст запиту')
     title = sanitize_user_text(str(plan.get('title') or query))[:100]
@@ -375,66 +423,206 @@ def _semantic_plan(query: str, plan: dict) -> dict:
         requirements = []
     required = [sanitize_user_text(str(x))[:160] for x in requirements
                 if isinstance(x, str) and x.strip()][:5]
-    # An exact concrete subject from the user's own wording cannot be dropped
-    # simply because a small LLM described it as generic 'arts'/'research'.
-    query_anchors = _specific_terms(query)
-    # A deliberately BROAD request (e.g. 'гранти для митців') is valid too.
-    # Only relax this when the original query itself has no narrower subject.
-    if not query_anchors:
-        broad_category = ('митц', 'мистец', 'дослід', 'науков', 'громад', 'неуряд',
-                          'благод', 'худож', 'артист', 'artist', 'research', 'science', 'ngo',
-                          'культур', 'culture', 'гуманітар', 'інновац', 'design', 'digital',
-                          'вистав', 'фестив', 'резиден')
-        query_anchors = [t[:4] for t in _semantic_tokens(query)
-                         if any(t.startswith(root) for root in broad_category)]
-        query_anchors = list(dict.fromkeys(query_anchors))[:4]
+    region = _query_region(query)
+    applicant_required = _educational_institution_request(query)
+    # The original user's subject carries more weight than loose LLM synonyms.
+    original_groups = _query_topic_groups(query, applicant_required)
+    # Educational institutions can apply to *non-education* thematic grants;
+    # "education" in a headline is not evidence that schools may apply.
+    raw_groups = plan.get('topic_groups', [])
+    if not isinstance(raw_groups, list):
+        raw_groups = []
+    ai_groups = []
+    for raw in raw_groups[:6]:
+        group = raw.get('phrases', []) if isinstance(raw, dict) else raw
+        if isinstance(group, str):
+            group = [group]
+        if not isinstance(group, list):
+            continue
+        phrases = [str(x)[:65] for x in group if isinstance(x, str) and x.strip()]
+        if phrases:
+            ai_groups.append(phrases[:8])
+    # Keyword-only synonyms remain supporting matches, NEVER standalone topical
+    # matches when explicit subject groups have been found in user input.
     generated = plan.get('subject_terms', plan.get('semantic_terms', []))
     if not isinstance(generated, list):
         generated = []
     semantic_terms = _specific_terms([str(x)[:60] for x in generated if isinstance(x, str)][:12])
-    # No named facet? Do not quietly degrade to 'all grants'.
-    if not query_anchors and not semantic_terms:
+    query_anchors = _specific_terms(query)
+    if not query_anchors and not applicant_required:
+        broad_roots = ('митц','мистец','дослід','наук','громад','неуряд',
+                       'благод','artist','research','science','ngo','культур')
+        query_anchors = list(dict.fromkeys(t[:4] for t in _semantic_tokens(query)
+                           if any(t.startswith(root) for root in broad_roots)))[:3]
+    broad_groups = original_groups if applicant_required else (original_groups or [[x] for x in query_anchors[:3]])
+    if not broad_groups and not applicant_required:
+        # Legacy broad requests like "гранти для митців" are legitimate.
+        broad_roots = ('митц','мистец','дослід','наук','громад','неуряд',
+                       'благод','artist','research','science','ngo','культур')
+        broad_groups = [[t[:4]] for t in _semantic_tokens(query)
+                        if any(t.startswith(root) for root in broad_roots)][:3]
+    # AI groups act as bounded synonyms, but an AI-only group must overlap a
+    # subscriber-derived domain or else it could invent unrelated subjects.
+    synonym_groups = []
+    for group in ai_groups:
+        if not broad_groups:
+            continue
+        related = any(any(stem in _specific_terms(phrase) for stem in anchor)
+                      for anchor in broad_groups for phrase in group)
+        if related:
+            synonym_groups.append(group)
+    if not broad_groups and not applicant_required:
         raise ValueError('Тема запиту не містить конкретного пошукового напряму')
     return {
-        'title': title,
-        'subject': subject,
-        'activity': activity,
-        'applicant': applicant,
-        'requirements': required,
-        'query_anchors': query_anchors[:12],
-        'semantic_terms': semantic_terms[:18],
-        'version': 2,
+        'title': title, 'subject': subject, 'activity': activity,
+        'applicant': applicant, 'requirements': required,
+        'query_anchors': query_anchors[:12], 'semantic_terms': semantic_terms[:18],
+        'topic_groups': broad_groups,
+        'topic_synonyms': synonym_groups,
+        'region_root': region,
+        'applicant_required': applicant_required,
+        'applicant_phrases': ['заклад освіти', 'освітній заклад', 'навчальний заклад',
+                              'школа', 'ліцей', 'гімназія', 'університет', 'коледж',
+                              'educational institution', 'school', 'university',
+                              'college'] if applicant_required else [],
+        'version': 3,
     }
 
 
-def _candidate_matches_subject(text: str, plan: dict) -> tuple[bool, int]:
-    """Cheap first stage: a genuine subject anchor, not a generic role word.
+def _phrase_hit(haystack: str, stems: list[str], max_distance: int = 7) -> bool:
+    """2/3-word matching in one short context window, tolerant to inflection.
 
-    Synonyms may improve recall but are intentionally weaker than a phrase
-    explicitly present in the user's query. An LLM still verifies full intent.
+    Unlike `any(term in text)`, "ethno tourism" cannot match a post solely
+    discussing generic tourism or solely ethnic folklore.
     """
-    no_urls = re.sub(r'https?://\S+|#[^\s]+', ' ', text.casefold())
-    intro = no_urls[:950]
-    # Check also thematic/eligible activity lines buried in the full archive.
-    raw_lines = no_urls.splitlines()
-    important = [line[:260] for line in raw_lines
-                 if any(x in line for x in ('підтриму', 'прийма', 'проєкт', 'проект', 'напрям',
-                                            'фінансу', 'темати', 'activities', 'eligible', 'support'))]
-    scored_text = intro + '\n' + '\n'.join(important[:22])
-    q_anchors = plan.get('query_anchors') or []
-    synonyms = plan.get('semantic_terms') or []
-    # Check lexical domain in the whole description (not only exact token in title).
-    domain_present = [x for x in q_anchors if x in no_urls]
-    synonym_present = [x for x in synonyms if x in scored_text]
-    if not domain_present and not synonym_present:
+    if not stems:
+        return False
+    tokens = _semantic_tokens(haystack)
+    if len(stems) > 1:
+        # Covers compound words like етнотуризм vs етно туризму.
+        merged = ''.join(stems)
+        if any(t.startswith(merged) for t in tokens):
+            return True
+    matching = [i for i,t in enumerate(tokens)
+                if any(t.startswith(stem) for stem in stems)]
+    if not matching:
+        return False
+    if len(stems) == 1:
+        return any(t.startswith(stems[0]) for t in tokens)
+    for start in matching:
+        window = tokens[start:start+max_distance]
+        if all(any(t.startswith(stem) for t in window) for stem in stems):
+            return True
+    return False
+
+
+def _searchable_positive_text(post: str) -> str:
+    """Ignore URLs/hashtags and explicit exclusion blocks for positive proof."""
+    post = re.sub(r'https?://\S+|#[^\s]+', ' ', post.casefold())
+    lines = []
+    inside_negative = False
+    for line in post.splitlines():
+        if re.search(r'(не фінансуються|не підтримуються|виключення|ineligible|not supported)',line):
+            inside_negative = True
+            continue
+        if inside_negative:
+            if re.search(r'(хто може|географія|як подат|дедлайн|офіційн|фінансування|що підтрим)',line):
+                inside_negative = False
+            else:
+                continue
+        lines.append(line)
+    return '\n'.join(lines)
+
+
+def _context_section(text: str, headings: tuple[str,...], limit: int = 520) -> str:
+    lines = text.splitlines()
+    captured = []
+    for i,line in enumerate(lines):
+        if any(k in line.casefold() for k in headings):
+            captured.append(' '.join(lines[i:i+6])[:limit])
+    return ' '.join(captured)[:limit*3]
+
+
+def _region_eligible(post: str, root: str) -> bool:
+    if not root:
+        return True
+    clean = re.sub(r'https?://\S+|#[^\s]+',' ',post.casefold())
+    # A geographic restriction must be checked in its actual section; seeing
+    # "Україна" somewhere in a grant post does NOT imply Poltava is eligible.
+    geo = _context_section(clean, ('географія', 'регіон участі', 'країни участі',
+                                   'географіч', 'територі', 'location', 'geography'))
+    intro = '\n'.join(clean.splitlines()[:5])
+    if root in geo or root in intro:
+        return True
+    return bool(re.search(r'\b(?:вс(?:я|ю)\s+україн\w*|'
+                          r'усі\s+област\w*\s+україн\w*|'
+                          r'весь\s+світ|увесь\s+світ|'
+                          r'будь.як\w*\s+країн\w*|міжнародн\w*|global|worldwide)\b',geo)
+                or re.search(r'\bукраїн[аіи]\b',geo))
+
+
+def _applicant_eligible(post: str, phrases: list[str]) -> bool:
+    clean = re.sub(r'https?://\S+|#[^\s]+',' ',post.casefold())
+    eligible = _context_section(clean, ('хто може','хто подає','заявник','учасник',
+                                        'для кого','eligib','who can apply'))
+    # An institution's name as a donor/organizer must not count as eligibility.
+    intro = '\n'.join(clean.splitlines()[:4])
+    explicit_intro = re.search(
+        r'(?:\bдля\b|можуть\s+подат|запрошу\w*|eligible\s+for)'
+        r'.{0,125}(?:заклад\w*|школ\w*|університет\w*|коледж\w*|ліце\w*)',intro)
+    # Do not treat student fellowships or educational PROJECTS as grants to a
+    # school itself; "заклади освіти" must be on the applicants side.
+    return any(_phrase_hit(eligible, _specific_terms(p)) for p in phrases
+               if _specific_terms(p)) or bool(explicit_intro)
+
+
+def _candidate_matches_subject(text: str, plan: dict) -> tuple[bool, int]:
+    """Faceted retrieval: OR between requested activities, AND with audience/region.
+
+    Hashtags are an additional positive signal, never a license to ignore
+    the actual eligibility, activity or location requirements.
+    """
+    original = re.sub(r'https?://\S+', ' ', text.casefold())
+    positive = _searchable_positive_text(text)
+    intro = positive[:780]
+    hashtags = ' '.join(re.findall(r'#[\wа-яіїєґ]+', original))
+    topic_groups = plan.get('topic_groups') or []
+    score = 0
+    if topic_groups:
+        matched = []
+        for group in topic_groups:
+            # Distinctive single-word topic is valid; multiword clause requires
+            # every important word to occur in a short window.
+            if _phrase_hit(positive, group):
+                matched.append(group)
+                score += 6 + (4 if _phrase_hit(intro[:400], group) else 0)
+                if _phrase_hit(hashtags, group):
+                    score += 3
+        if not matched:
+            # Named narrow synonyms found by AI may identify an authentic
+            # specialty (e.g. археологія for historical studies), but cannot
+            # turn multi-facet user requests into a general sector catalogue.
+            # Only apply to a SINGLE one-word original topical clause, and only
+            # if the alternate specialty is in the heading/intro itself.
+            alternate = [x for x in plan.get('semantic_terms', [])
+                         if len(x) >= 4 and x not in topic_groups[0]]
+            if not (len(topic_groups) == 1 and len(topic_groups[0]) == 1
+                    and any(_phrase_hit(intro[:700], [x]) for x in alternate)):
+                return False, 0
+            score += 4
+    if plan.get('applicant_required') and not _applicant_eligible(
+            text, plan.get('applicant_phrases') or []):
         return False, 0
-    score = 5 * sum(x in intro[:250] for x in domain_present)
-    score += 3 * sum(x in scored_text for x in domain_present)
-    score += 2 * sum(x in intro[:250] for x in synonym_present)
-    score += sum(x in scored_text for x in synonym_present)
-    # Passage mentions only an AI-produced synonym while no query subject?
-    # Keep for semantic verification but at lower rank.
-    return True, max(score, 1)
+    if not _region_eligible(text, plan.get('region_root') or ''):
+        return False, 0
+    # Applicant/region-only queries still have valid candidates.
+    if not topic_groups:
+        score += 5
+    if plan.get('applicant_required'):
+        score += 4
+    if plan.get('region_root'):
+        score += 4
+    return True, score
 
 
 def _clean_official_url(u: str) -> str:
@@ -599,6 +787,15 @@ def ai_expand(query: str) -> tuple[str, dict]:
         "Наприклад, історик вивчає ІСТОРІЮ, не будь-яку науку; "
         "митець ЗВУКУ працює зі звуком, не будь-яким візуальним мистецтвом. "
         "Не роби припущень про країну, вік або форму організації, якщо цього не питають. "
+        "У запиті можуть бути КІЛЬКА НЕЗАЛЕЖНИХ напрямів: наприклад, етнотуризм "
+        "ТА бджільництво означає дві окремі теми (АБО), а не один широкий "
+        "напрям 'розвиток'. Розділи їх у topic_groups; усередині кожної теми "
+        "підбирай синоніми фразами по 2–3 слова, без розширення до 'культура', "
+        "'освіта' чи 'бізнес' взагалі. Географія й тип заявника — окремі "
+        "ОБОВ'ЯЗКОВІ умови (ТА), не теми. Для запиту 'заклади освіти у "
+        "Полтавській області' шукай гранти, на які можуть подаватися саме "
+        "заклади освіти і які діють у Полтавській області, навіть коли "
+        "тематика гранту не освітня. Студентські стипендії не підходять. "
         "Поле subject_terms: 5-10 вузьких українських/англійських варіантів "
         "САМЕ ПРЕДМЕТА діяльності, включно зі спорідненими жанрами, а НЕ загальні "
         "'наука', 'дослідження', 'мистецтво', 'грант', 'стартап' або назви типів заявників. "
@@ -607,9 +804,11 @@ def ai_expand(query: str) -> tuple[str, dict]:
         "{\"title\":\"назва українською\",\"subject\":\"предмет\"," 
         "\"activity\":\"що має фінансуватися\",\"applicant\":\"хто саме має право брати участь\"," 
         "\"requirements\":[\"обов'язкові вимоги з тексту користувача\"],"
+        "\"topic_groups\":[[\"вузька тема\",\"точний синонім\"],"
+        "[\"друга незалежна тема, якщо є\"]],"
         "\"subject_terms\":[\"вузький синонім\",\"ще один\"]}."
     )
-    result = cf_ai(system, {'topic': query}, max_tokens=450)
+    result = cf_ai(system, {'topic': query}, max_tokens=650)
     plan = _semantic_plan(query, result)
     return plan['title'], plan
 
@@ -669,6 +868,10 @@ def candidate_context(post_text: str, query: str, plan: dict | None = None) -> d
     return {
         'intro': clean[:700].strip(),
         'topic_and_eligibility_evidence': candidate_evidence(post_text, query, plan=plan),
+        'geography_evidence': _context_section(clean, ('географія','географіч',
+            'регіон участі', 'країни участі', 'location','geography'))[:260],
+        'applicant_evidence': _context_section(clean, ('хто може','хто подає',
+            'учасник','заявник','для кого','eligib','who can apply'))[:350],
     }
 
 
@@ -691,9 +894,16 @@ def ai_select(query: str, ranked: list[dict]) -> list[int]:
         'коли є позитивне підтвердження дозволеності музики/звуку; сама фраза '
         '«усі митці» цього не доводить. Для незалежного дослідника не припускай '
         'можливість особистої заявки, якщо потрібна інституція. '
-        'Не включай лише за одним збігом слів, хештегом, випадковою згадкою '
-        'або витратою на допоміжні матеріали. '
-        'Перевір intro ТА topic_and_eligibility_evidence. '
+        'Різні теми в одному запиті є альтернативами (АБО); вимоги до типу '
+        'заявника та географії є обов’язковими (ТА). Для етнотуризму не '
+        'підходить просто загальний туризм; для бджільництва не підходить '
+        'загальний захист тварин. Для закладів освіти не підходять '
+        'студентські премії чи навчальні програми, де заявник лише фізична особа. '
+        'Локація Полтавська область не дорівнює будь-яка окрема область України; '
+        'загальноукраїнський конкурс підходить. '
+        'Не включай лише за одним збігом слів, хештегом, випадковою згадкою '        'або витратою на допоміжні матеріали. '
+        'Перевір intro, topic_and_eligibility_evidence, geography_evidence '
+        'та applicant_evidence для кожного ID. '
         'Не домислюй невідомі умови. Якщо немає позитивного підтвердження '
         'ВСІХ обов’язкових складових, виключай. '
         'Якщо безпосередньо й явно підтверджено фінансування запитаної '
@@ -712,10 +922,13 @@ def ai_select(query: str, ranked: list[dict]) -> list[int]:
                 'heading': row['_title'][:160],
                 'intro': context['intro'],
                 'topic_and_eligibility_evidence': context['topic_and_eligibility_evidence'],
+                'geography_evidence': context['geography_evidence'],
+                'applicant_evidence': context['applicant_evidence'],
                 'deadline': row.get('_deadline'),
             })
         intent = ({k: plan.get(k) for k in
-                   ('subject', 'activity', 'applicant', 'requirements')}
+                   ('subject', 'activity', 'applicant', 'requirements',
+                    'topic_groups', 'region_root', 'applicant_required')}
                   if isinstance(plan, dict) else {'original_query': query})
         result = cf_ai(system, {'query': query, 'intent': intent, 'candidates': candidates}, max_tokens=550)
         raw = result.get('selected_ids')
@@ -988,7 +1201,7 @@ def catalog_card_fields(post_text: str) -> dict[str, str]:
     def plain(line: str) -> str:
         line = re.sub(r'https?://\S+|#[\wа-яіїєґ]+', '', line, flags=re.I)
         line = re.sub(r'^[•*▪✅✔◦\-–—\s]+', '', line)
-        return re.sub(r'\s+', ' ', line).strip(' :—–-•*.;')
+        return re.sub(r'\s+', ' ', line).strip(' :—–-•*')
 
     heads = {
         'funding': r'(?:фінансуван(?:ня)?|фінансові умови|фінансова підтримка|сума гранту|розмір гранту|грантова підтримка|grant amount|funding)',
@@ -1036,8 +1249,8 @@ def catalog_card_fields(post_text: str) -> dict[str, str]:
                 return values
         return []
 
-    # Only full introductory sentences; never a time, a URL or a part of a
-    # "who is eligible" section mislabelled as the opportunity's summary.
+    # Capture a COMPLETE introductory sentence, not an arbitrary first 190 chars
+    # or two lines (those were the source of dangling "які…" on the PDF cards).
     intro = []
     for raw_line in raw[1:]:
         line = plain(raw_line)
@@ -1049,16 +1262,27 @@ def catalog_card_fields(post_text: str) -> dict[str, str]:
                 or re.match(r'^(?:для України\s*[—–-]?\s*\d{1,2}:\d{2})', line, re.I)):
             break
         intro.append(line)
-        if len(intro) == 2 or sum(map(len, intro)) > 190:
+        # Paragraph-style Telegram introductions can span several source lines.
+        collected = ' '.join(intro)
+        if re.search(r'[.!?](?=\s|$)', collected) or len(collected) > 700 or len(intro) >= 9:
             break
-    summary = ' '.join(intro)
-    # Cut at a sentence boundary where possible; no synthetic completion.
-    if len(summary) > 240:
-        end = list(re.finditer(r'[.!?](?=\s|$)', summary[:245]))
-        summary = summary[:end[-1].end()] if end else _catalog_ellipsis(summary, 220)
+    summary = ' '.join(intro).strip()
+    ends = list(re.finditer(r'[.!?](?=\s|$)', summary))
+    if ends:
+        # Complete first sentence. A second sentence is optional only when short.
+        finish = ends[0].end()
+        if len(ends) > 1 and ends[1].end() <= 320:
+            finish = ends[1].end()
+        summary = summary[:finish]
+    elif len(summary) > 380 or re.search(r'[,;:]\s*$', summary):
+        # Never put a partially copied clause into a public catalog.
+        summary = 'Опис програми та повні умови — в оригінальному дописі.'
+    # Strip an accidental dangling ellipsis present in some source posts.
+    if summary.endswith(('…', '...')):
+        summary = 'Опис програми та повні умови — в оригінальному дописі.'
 
     funding_lines = take_block('funding')
-    monetary = re.compile(r'(?:€|£|\$|₴|\b(?:EUR|USD|GBP)\b|\d\s*%|євро|грн|долар|\b(?:оплачен|фінансован|контракт|пілот))', re.I)
+    monetary = re.compile(r'(?:€|£|\$|₴|\b(?:EUR|USD|GBP)\b|\d\s*%|євро|грн|гривен|гривн|долар|\b(?:оплачен|фінансован|контракт|пілот))', re.I)
     amounts = [x for x in funding_lines if monetary.search(x)]
     # Programme-wide budgets are different from the award per applicant.
     individual = [x for x in amounts if not re.search(r'загальн\w* бюджет|бюджет\s+конкурсу', x, re.I)]
@@ -1169,27 +1393,96 @@ def pdf_catalog(path: Path, title: str, topic: str, rows: list[dict], stamp: dat
         item = Paragraph(escape(pdf_safe_title(s), quote=False), st)
         return item.wrap(width, H)[1]
 
-    def fit_lines(s: str, width: float, size: float, leading: float,
-                  lines: int, face=None) -> str:
-        """Fit by *rendered height*, with a visible ellipsis linked to full text.
+    def card_fields(row: dict) -> dict[str, str]:
+        """Keep natural complete facts; never truncate inside a sentence."""
+        if '_v41_card_fields' in row:
+            return row['_v41_card_fields']
+        fields = catalog_card_fields(row.get('text', ''))
 
-        Unlike character-based cuts, this is robust with very long Ukrainian
-        titles, long institution names and narrower two-column field widths.
-        """
-        s = pdf_safe_title(s)
-        if measure(s, width, size, leading, face) <= lines*leading + .1:
-            return s
-        parts = s.split()
-        lo, hi, best = 0, len(parts), ''
-        while lo <= hi:
-            mid = (lo+hi)//2
-            candidate = ' '.join(parts[:mid]).rstrip(' ,.:-–—;') + '…'
-            if measure(candidate, width, size, leading, face) <= lines*leading + .1:
-                best = candidate
-                lo = mid+1
-            else:
-                hi = mid-1
-        return best or 'Деталі — у дописі…'
+        def preserve_complete(value: str, maximum: int, fallback: str) -> str:
+            if len(value) <= maximum:
+                return value
+            # The semicolon joins complete bullet facts; full stops bound
+            # complete sentences. Keep as many WHOLE facts as fit.
+            units = re.split(r'(?<=[.!?])\s+|;\s+', value)
+            kept = []
+            for unit in units:
+                unit = unit.strip()
+                if not unit:
+                    continue
+                candidate = '; '.join(kept+[unit])
+                if len(candidate) > maximum:
+                    break
+                kept.append(unit)
+            return '; '.join(kept) if kept else fallback
+
+        limits = {
+            'summary': (430, 'Повний опис — в оригінальному дописі.'),
+            'funding': (340, 'Деталі фінансування — в оригінальному дописі.'),
+            'eligibility': (380, 'Умови участі — в оригінальному дописі.'),
+            'geography': (330, 'Повна географія — в оригінальному дописі.'),
+            'warning': (330, 'Особливі умови — в оригінальному дописі.'),
+        }
+        return {name: preserve_complete(fields[name], maximum, fallback)
+                for name, (maximum, fallback) in limits.items()}
+
+    def card_min_height(row: dict) -> float:
+        """Calculated natural height (points), including button and whitespace."""
+        fields = card_fields(row)
+        width = W - 40*mm
+        col_w = (width - 48)/2
+        def compute() -> float:
+            title_h = measure(row.get('_title', 'Грантова можливість'), width-32, 10.5, 15.2, bold)
+            summary_h = measure(fields['summary'], width-32, 8.6, 13)
+            first = max(measure(fields['funding'], col_w, 8.0, 12),
+                        measure(fields['eligibility'], col_w, 8.0, 12))
+            second = max(measure(fields['geography'], col_w, 7.9, 11.8),
+                         measure(fields['warning'], col_w, 7.9, 11.8))
+            # Button, labels and all vertical whitespace, including clearance.
+            return 171 + title_h + summary_h + first + second + 6
+
+        need = compute()
+        if need > MAX_SINGLE_HEIGHT:
+            # Large source descriptions are replaced with EXPLICIT references,
+            # never with dangling 'які…' or misleading truncated conditions.
+            alternatives = {
+                'warning': 'Особливі умови — в оригінальному дописі.',
+                'summary': 'Повний опис — в оригінальному дописі.',
+                'eligibility': 'Умови участі — в оригінальному дописі.',
+                'funding': 'Деталі фінансування — в оригінальному дописі.',
+                'geography': 'Повна географія — в оригінальному дописі.',
+            }
+            for name, brief in alternatives.items():
+                fields[name] = brief
+                need = compute()
+                if need <= MAX_SINGLE_HEIGHT:
+                    break
+        row['_v41_card_fields'] = fields
+        return need
+
+    TWO_CARD_HEIGHT = 106*mm
+    MAX_SINGLE_HEIGHT = 219*mm
+    prepared_pages: list[list[tuple[dict,float]]] = []
+    slot = 0
+    while slot < len(rows):
+        row = rows[slot]
+        need = card_min_height(row)
+        if need > MAX_SINGLE_HEIGHT:
+            raise RuntimeError(
+                f'Задовгий текст картки {slot+1}: замість обрізання речень '
+                'залишаємо оригінальний допис без спотворень. '
+                'Перевірте повноту вихідних даних.')
+        if need > TWO_CARD_HEIGHT:
+            prepared_pages.append([(row, max(TWO_CARD_HEIGHT, need))])
+            slot += 1
+            continue
+        if slot + 1 < len(rows) and card_min_height(rows[slot+1]) <= TWO_CARD_HEIGHT:
+            prepared_pages.append([(row, TWO_CARD_HEIGHT), (rows[slot+1], TWO_CARD_HEIGHT)])
+            slot += 2
+        else:
+            prepared_pages.append([(row, TWO_CARD_HEIGHT)])
+            slot += 1
+    max_page = 1 + len(prepared_pages)
 
     def pill(x: float, y: float, w: float, h: float, label: str, bg, fg,
              size: float = 7.1):
@@ -1257,42 +1550,18 @@ def pdf_catalog(path: Path, title: str, topic: str, rows: list[dict], stamp: dat
         pill(x+38, top-32, 162, 19, tag, LIGHT_TEAL, TEAL, 7)
         dline = date.fromisoformat(row['_deadline']).strftime('%d.%m.%Y')
         pill(x+width-129, top-32, 115, 19, 'ДЕДЛАЙН: '+dline, CREAM, NAVY, 6.9)
-        # All visible fields have fixed *rendered line counts*, not arbitrary
-        # character limits. Long posts do not overflow onto another card.
-        fields = catalog_card_fields(row.get('text',''))
+        # Render every selected sentence/bullet IN FULL. The layout planner
+        # will allocate a whole page when two cards cannot fit naturally.
+        fields = card_fields(row)
         col_w = (width-48)/2
         left = x+16
         right = x+32+col_w
-        label = fit_lines(row.get('_title', 'Грантова можливість'),
-                          width-32, 10.5, 15.2, 3, bold)
-        summary = fit_lines(fields['summary'], width-32, 8.6, 13, 2)
-        fld = {
-            'funding': fit_lines(fields['funding'], col_w, 8.0, 12, 2),
-            'eligibility': fit_lines(fields['eligibility'], col_w, 8.0, 12, 2),
-            'geography': fit_lines(fields['geography'], col_w, 7.9, 11.8, 2),
-            'warning': fit_lines(fields['warning'], col_w, 7.9, 11.8, 2),
-        }
-
-        def content_bottom() -> float:
-            title_height = measure(label, width-32, 10.5, 15.2, bold)
-            intro_height = measure(summary, width-32, 8.6, 13)
-            first = max(measure(fld['funding'], col_w, 8, 12),
-                        measure(fld['eligibility'], col_w, 8, 12))
-            second = max(measure(fld['geography'], col_w, 7.9, 11.8),
-                         measure(fld['warning'], col_w, 7.9, 11.8))
-            return top-44-title_height-10-intro_height-11-19-7-first-28-7-second
-
+        label = pdf_safe_title(row.get('_title', 'Грантова можливість'))
+        summary = fields['summary']
+        fld = {k: fields[k] for k in ('funding','eligibility','geography','warning')}
         btn_y = y+14
-        if content_bottom() < btn_y+31:
-            # Unusually verbose headings must never prevent publishing a PDF.
-            label = fit_lines(label, width-32, 10.5, 15.2, 2, bold)
-            summary = fit_lines(summary, width-32, 8.6, 13, 1)
-        if content_bottom() < btn_y+31:
-            fld = {k: fit_lines(v, col_w, 8.0 if k in ('funding','eligibility') else 7.9,
-                                 12 if k in ('funding','eligibility') else 11.8, 1)
-                   for k,v in fld.items()}
-        if content_bottom() < btn_y+31:
-            raise RuntimeError(f'Картка {number}: недостатньо місця навіть після скорочення тексту')
+        if card_min_height(row) > height + 0.5:
+            raise RuntimeError(f'Картка {number}: недостатньо місця без обривання речень')
 
         title_h = pdraw(label, x+16, top-44, width-32, 10.5, 15.2, bold, NAVY)
         summary_top = top-44-title_h-10
@@ -1360,25 +1629,27 @@ def pdf_catalog(path: Path, title: str, topic: str, rows: list[dict], stamp: dat
               colors.HexColor('#CEE5EB'))
     c.linkURL(f'https://t.me/{BOT}',(22*mm,29*mm,W-22*mm,60*mm),relative=0)
     c.showPage()
-    # CONTENT
-    for p in range((len(rows)+1)//2):
+    # CONTENT: short cards remain two per A4; longer ones get a full page.
+    number = 0
+    for p, grouped in enumerate(prepared_pages):
         page=p+2
         c.setFillColor(BG)
         c.rect(0,0,W,H,stroke=0,fill=1)
         header(page)
-        for slot in range(2):
-            idx=p*2+slot
-            if idx>=len(rows):
-                break
-            # Leave a clear footer zone: the second card must not touch
-            # the page-number line at 17 mm from the lower edge.
-            ypos=H-(161+113*slot)*mm
-            card(rows[idx],idx+1,20*mm,ypos,W-40*mm,106*mm)
+        for position, (row, height) in enumerate(grouped):
+            number += 1
+            if len(grouped) == 2:
+                ypos=H-(161+113*position)*mm
+            else:
+                ypos=H-55*mm-height
+            card(row, number, 20*mm, ypos, W-40*mm, height)
         c.showPage()
     c.save()
 
 def default_state() -> dict:
-    return {"schema_version": 1, "last_update_id": 0, "users_days": {}, "queue": [], "published": [], "last_post_at": None}
+    return {"schema_version": 1, "last_update_id": 0, "users_days": {},
+            "queue": [], "published": [], "last_post_at": None,
+            "no_results": []}
 
 
 def load_state(path: Path = STATE_PATH) -> dict:
@@ -1394,6 +1665,12 @@ def save_state(state: dict, path: Path = STATE_PATH) -> None:
     # Prune old hashed user-day counters, no plain user IDs.
     cutoff = (today_kyiv() - timedelta(days=2)).isoformat()
     state["users_days"] = {k: day for k, day in state.get("users_days", {}).items() if day >= cutoff}
+    # Keep undelivered announcements until sent, even when the channel has
+    # reached its daily public-message cap. Past reports remain auditable.
+    history_cutoff = (today_kyiv() - timedelta(days=NO_RESULTS_HISTORY_DAYS)).isoformat()
+    state["no_results"] = [item for item in state.get("no_results", [])
+                           if item.get("status") == "pending" or
+                           str(item.get("checked_on", "")) >= history_cutoff]
     path.parent.mkdir(parents=True, exist_ok=True)
     temp = path.with_suffix(".tmp")
     temp.write_text(json.dumps(state, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
@@ -1611,6 +1888,126 @@ def can_publish(state: dict, now: datetime) -> bool:
     return True
 
 
+def _no_results_same_topic(first: str, second: str) -> bool:
+    """Deduplicate equivalent word-for-word requests, not different topics.
+
+    Strong semantic expansion is inappropriate here: two requests mentioning
+    'education' could specify different regions or applicant groups.
+    """
+    def normalize(value: str) -> str:
+        return ' '.join(re.findall(r"[a-zа-яіїєґ0-9]+",
+                                   unicodedata.normalize('NFKC', value).casefold()))
+    return bool(normalize(first)) and normalize(first) == normalize(second)
+
+
+def recent_no_result(state: dict, topic: str, *, now: date | None = None) -> dict | None:
+    """A public or queued zero-result message for exactly this recent topic."""
+    current_day = now or today_kyiv()
+    cutoff = (current_day - timedelta(days=NO_RESULTS_REPEAT_DAYS)).isoformat()
+    for previous in reversed(state.get('no_results', [])):
+        if (previous.get('status') in ('pending', 'published')
+                and cutoff <= str(previous.get('checked_on', '')) <= current_day.isoformat()
+                and _no_results_same_topic(topic, str(previous.get('topic', '')))):
+            return previous
+    return None
+
+
+def mark_no_results(state: dict, entry: dict, reason: str) -> dict:
+    """Queue a public outcome (without privately identifying the subscriber).
+
+    This function never contacts Telegram. Successful/failed sends are handled
+    separately to avoid treating API or AI outages as a negative search result.
+    """
+    if reason not in ('no_candidate', 'none_verified'):
+        raise ValueError('Unexpected no-results reason')
+    request_id = int(entry['id'])
+    if request_id <= 0:
+        raise ValueError('Invalid request ID')
+    history = state.setdefault('no_results', [])
+    for previous in history:
+        if int(previous.get('id', -1)) == request_id:
+            return previous
+    topic = sanitize_user_text(str(entry['topic']))
+    prior = recent_no_result(state, topic)
+    item = {'id': request_id, 'topic': topic, 'reason': reason,
+            'checked_on': today_kyiv().isoformat(),
+            'status': 'duplicate' if prior is not None else 'pending'}
+    if prior is not None:
+        item['duplicate_of'] = int(prior['id'])
+        # The original outcome is already public or will be published soon.
+        print('Повторний запит без результатів: публікація не дублюється.')
+    else:
+        print('Новий запит без результатів: підготовлено публічне повідомлення.')
+    history.append(item)
+    return item
+
+
+def public_no_results_text(item: dict) -> str:
+    """Post topic only, never a private Telegram account or chat ID."""
+    topic = escape(sanitize_user_text(str(item['topic']))[:250])
+    stamp = date.fromisoformat(item['checked_on']).strftime('%d.%m.%Y')
+    return (f'🔎 <b>РЕЗУЛЬТАТ ПОШУКУ NGO GRANTS</b>\n\n'
+            f'📌 <b>Запит:</b> «{topic}»\n\n'
+            '📭 <b>Відповідних актуальних можливостей не знайдено.</b>\n\n'
+            f'📅 Станом на {stamp} пошук у доступному архіві @ngo_grants '
+            'не виявив відкритих грантових можливостей, що відповідають цьому запиту.\n\n'
+            'ℹ️ Пошук проводиться лише серед дописів каналу. '
+            'Це не означає, що таких грантів немає поза архівом.\n\n'
+            '💡 Перед новим замовленням перегляньте попередні результати каналу.\n'
+            f'🤖 Замовити каталог: https://t.me/{BOT}')
+
+
+def publish_pending_no_results(state: dict, *, now: datetime | None = None) -> bool:
+    """Publish at most one pending public status and at most 3 per Kyiv day.
+
+    A Telegram failure leaves the entry pending. It does not consume a catalog
+    slot, does not drop another user's request and does not invent a search hit.
+    """
+    now = now or datetime.now(timezone.utc)
+    day = now.astimezone(KYIV).date().isoformat()
+    history = state.get('no_results', [])
+    posted_today = sum(x.get('status') == 'published' and
+                       x.get('published_on') == day for x in history)
+    if posted_today >= MAX_NO_RESULTS_PER_DAY:
+        return False
+    for item in history:
+        if item.get('status') != 'pending':
+            continue
+        # Recheck at dispatch time (including statuses imported from v4.1).
+        earlier = next((x for x in history if x is not item and
+                        x.get('status') in ('pending', 'published') and
+                        x.get('id') != item.get('id') and
+                        x.get('checked_on', '') <= item.get('checked_on', '') and
+                        _no_results_same_topic(str(x.get('topic', '')),
+                                               str(item.get('topic', ''))) and
+                        (date.fromisoformat(item['checked_on']) -
+                         date.fromisoformat(x['checked_on'])).days <= NO_RESULTS_REPEAT_DAYS), None)
+        if earlier is not None:
+            item['status'] = 'duplicate'
+            item['duplicate_of'] = int(earlier['id'])
+            return True
+        # Only the official channel receives this information. No DM to user.
+        try:
+            response = tg('sendMessage', {
+                'chat_id': '@' + CHANNEL,
+                'text': public_no_results_text(item),
+                'parse_mode': 'HTML',
+                'disable_web_page_preview': True,
+            })
+            message_id = int(response['result']['message_id'])
+        except (RuntimeError, ValueError, TypeError, KeyError) as exc:
+            print('Публікацію результату пошуку відкладено: ' +
+                  type(exc).__name__, file=sys.stderr)
+            return False
+        item['status'] = 'published'
+        item['published_on'] = day
+        item['channel_url'] = f'https://t.me/{CHANNEL}/{message_id}'
+        print('Опубліковано повідомлення про відсутність результатів: ' +
+              item['channel_url'])
+        return True
+    return False
+
+
 def make_one_catalog(state: dict, rows: list[dict], *, dry_run=False) -> bool:
     """Review every eligible post in small AI batches across scheduled runs.
 
@@ -1625,17 +2022,23 @@ def make_one_catalog(state: dict, rows: list[dict], *, dry_run=False) -> bool:
     if entry.get("next_retry_at") and datetime.fromisoformat(entry["next_retry_at"]) > now:
         return False
     query = entry["topic"]
+    # Repeated queries do not call AI and do not create a second public post.
+    if recent_no_result(state, query) is not None:
+        mark_no_results(state, entry, 'no_candidate')
+        state["queue"].pop(0)
+        state.pop("ai_review", None)
+        return True
     review = state.get("ai_review")
     if (not isinstance(review, dict) or review.get("request_id") != entry["id"]
             or not isinstance(review.get("keywords"), dict)
-            or review["keywords"].get("version") != 2):
+            or review["keywords"].get("version") != 3):
         # Old broad-keyword progress is not safe to publish; rebuild semantic intent.
         # Expand search once, then freeze the full candidate ID list. The list
         # contains ALL relevant archive prefilter hits, without a numeric cap.
         title, keywords = ai_expand(query)
         ranked = rank_posts(rows, query, keywords)
         if not ranked:
-            print("За запитом немає дописів із відповідною тематикою й майбутнім дедлайном.")
+            mark_no_results(state, entry, 'no_candidate')
             state["queue"].pop(0)
             state.pop("ai_review", None)
             return True
@@ -1684,7 +2087,7 @@ def make_one_catalog(state: dict, rows: list[dict], *, dry_run=False) -> bool:
     selected_ids = set(review["selected_ids"])
     picked = dedupe_programmes([lookup[i] for i in candidate_ids if i in selected_ids and i in lookup])
     if not picked:
-        print("ШІ не підтвердив відповідність жодного актуального допису; без публікації.")
+        mark_no_results(state, entry, 'none_verified')
         state["queue"].pop(0)
         state.pop("ai_review", None)
         return True
@@ -1766,6 +2169,10 @@ def main():
     if os.environ.get("NGO_AI_AUTOPUBLISH", "false").lower() != "true":
         print("Прийом запитів активний; автопублікація поки вимкнена змінною NGO_AI_AUTOPUBLISH.")
         return
+    # Previously completed no-result searches may be waiting for the channel's
+    # independent daily status cap. This does not use Cloudflare AI credits.
+    if publish_pending_no_results(state):
+        save_state(state)
     if not state["queue"] or not can_publish(state, datetime.now(timezone.utc)):
         return
     if not (os.environ.get("CF_ACCOUNT_ID") and os.environ.get("CF_API_TOKEN")):
@@ -1777,6 +2184,10 @@ def main():
         changed = make_one_catalog(state, posts)
         if changed:
             save_state(state)
+            # Publish one newly completed unsuccessful search, if daily status
+            # quota allows. A failed Telegram send stays pending for a later run.
+            if publish_pending_no_results(state):
+                save_state(state)
     except Exception:
         # Pause AI retries rather than burning the free allowance on every cron run.
         if state.get("queue"):
