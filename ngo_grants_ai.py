@@ -27,7 +27,41 @@ import urllib.request
 from zoneinfo import ZoneInfo
 
 CHANNEL = "ngo_grants"
-BOT = "ngoGrantsAI_bot"
+# The legacy hard-coded handle was not validated against the active bot.
+# Never put an unverified username into a public Telegram post or PDF.
+BOT = "ngoGrantsAI_bot"  # legacy reference only; NEVER use as a public link
+VERIFIED_BOT_USERNAME: str | None = None
+
+
+def verified_order_url() -> str | None:
+    """Only a username confirmed by Telegram getMe may become a public link."""
+    if VERIFIED_BOT_USERNAME and re.fullmatch(r"[A-Za-z][A-Za-z0-9_]{4,31}", VERIFIED_BOT_USERNAME):
+        return f"https://t.me/{VERIFIED_BOT_USERNAME}"
+    return None
+
+
+def refresh_bot_identity() -> None:
+    """Check the actual Bot API identity on each scheduled run, no guessing."""
+    global VERIFIED_BOT_USERNAME
+    VERIFIED_BOT_USERNAME = None
+    try:
+        info = tg('getMe', {}).get('result') or {}
+        username = str(info.get('username') or '')
+        if info.get('is_bot') is True and username.lower().endswith('bot') and re.fullmatch(
+                r'[A-Za-z][A-Za-z0-9_]{4,31}', username):
+            VERIFIED_BOT_USERNAME = username
+            print('Telegram: перевірено актуальне ім’я бота через getMe.')
+        else:
+            print('Telegram: Bot API не повернув перевіреного username; посилання на бота приховано.')
+    except RuntimeError:
+        # Retrieval trouble must not block publishing; instead avoid broken URLs.
+        print('Telegram: не вдалося перевірити username бота; посилання на бота приховано.')
+
+
+def order_link_line() -> str:
+    link = verified_order_url()
+    return f'🤖 Замовити добірку: {link}' if link else ''
+
 KYIV = ZoneInfo("Europe/Kyiv")
 ARCHIVE = Path("archive/telegram")
 STATE_PATH = Path("ai_catalogs/state.json")
@@ -78,6 +112,105 @@ def sanitize_user_text(raw: str) -> str:
     raw = re.sub(r"(?<!\w)@[A-Za-z][A-Za-z0-9_]{4,31}\b", "[ім’я]", raw)
     raw = re.sub(r"(?<!\w)\+?\d[\d ()-]{7,}\d(?!\w)", "[телефон]", raw)
     return " ".join(raw.split())[:300]
+
+
+# Limited, explicit corrections for common query typos; no fuzzy changes to
+# donor/program names or private user data and no added topic categories.
+KNOWN_QUERY_TYPOS = (
+    (r'\bнаукт\b', 'науки'),
+    (r'\bкомпютерн', 'комп’ютерн'),
+    (r'\bінформаціних\b', 'інформаційних'),
+    (r'\bтехнолоґій\b', 'технологій'),
+)
+
+
+def normalize_search_query(query: str) -> str:
+    result = sanitize_user_text(query)
+    for pattern, replacement in KNOWN_QUERY_TYPOS:
+        result = re.sub(pattern, replacement, result, flags=re.I)
+    return result
+
+
+def requested_audience(query: str) -> str:
+    """Explicit applicant type is a HARD facet; unrelated applicant types fail."""
+    q = unicodedata.normalize('NFKC', query).casefold()
+    if _educational_institution_request(q):
+        return 'institution'
+    if re.search(r'\b(?:го|огс|нго|нпо)\b|'
+                 r'громадськ\w*\s+організаці|неурядов\w*\s+організаці|'
+                 r'благодійн\w*\s+(?:організаці|фонд)|'
+                 r'неприбутков\w*\s+організаці|для\s+організаці|'
+                 r'ngo|nonprofit|civil society', q):
+        return 'organization'
+    # Do not assume that "for artists/researchers" automatically means a
+    # personal-only catalogue: such grants may also allow institutions. The
+    # forthcoming Worker menu will transmit an explicit audience selection.
+    if re.search(r'фізичн\w*\s+особ|індивідуальн\w*\s+(?:заявн|грант|можлив)|'
+                 r'особист\w*\s+(?:грант|стипенд)|\bстипенді\w*\b|'
+                 r'\b(?:для|від)\s+самозайнят\w*', q):
+        return 'individual'
+    return 'any'
+
+
+def applicant_category_eligible(post: str, audience: str) -> bool:
+    """Check who MAY APPLY, not funder name or an incidental word in text."""
+    if audience == 'any':
+        return True
+    if audience == 'institution':
+        return _applicant_eligible(post, ['заклад освіти','освітній заклад',
+                'навчальний заклад','школа','ліцей','гімназія',
+                'університет','коледж','educational institution', 'university'])
+    clean = re.sub(r'https?://\S+', ' ', post.casefold())
+    eligible = _context_section(clean, ('хто може', 'хто подає', 'заявник',
+                     'учасник', 'для кого','eligib','who can apply'), limit=700)
+    intro = '\n'.join(clean.splitlines()[:6])
+    # Intro is evidence ONLY when it explicitly describes the applicants.
+    candidate_clause = '\n'.join(x for x in intro.splitlines() if re.search(
+        r'(?:грант|конкурс|стипенд|програм|запрошу|заявк|(?:для|eligible for))', x))
+    if audience == 'organization':
+        pat = (r'\b(?:го|огс|нго|нпо|ngo|ngos|nonprofit|non-profit)\b|'
+               r'громадськ\w*\s+організаці|благодійн\w*\s+(?:організаці|фонд)|'
+               r'неурядов\w*\s+організаці|неприбутков\w*\s+організаці|'
+               r'організаці\w*\s+громадянськ\w*\s+суспільств|'
+               r'юридичн\w*\s+особ|civil society organi|registered organization')
+    else:
+        pat = (r'фізичн\w*\s+особ|індивідуальн\w*\s+(?:заявн|учасник)|'
+               r'особист\w*\s+заявк|\bindividuals?\b|'
+               r'студент\w*|аспірант\w*|дослідник\w*|науковц\w*|'
+               r'митц\w*|художник\w*|фотограф\w*|автор\w*|'
+               r'журналіст\w*|викладач\w*|\bartist\w*|researchers?|'
+               r'молод\w*\s+люд')
+    return bool(re.search(pat, eligible, flags=re.I) or
+                re.search(r'(?:для|запрошу\w*|eligible for)\s*.{0,95}' + pat,
+                          candidate_clause, flags=re.I))
+
+
+def _regional_focus_query(query: str) -> bool:
+    """Geographic-only requests want LOCAL/NATIONAL grants, not global art prizes."""
+    if not _query_region(query):
+        return False
+    q = re.sub(r'[а-яіїєґ-]{5,}\s+(?:област[іьяю]|обл\.)', '', query.casefold())
+    return not any(t for t in _specific_terms(q) if not t.startswith(
+            ('грант', 'можлив', 'програм', 'розви', 'фінанс', 'проєкт', 'проект')))
+
+
+def _regional_focused_eligible(post: str, region_root: str) -> bool:
+    """Region-only reports: explicit region or Ukraine-wide LOCAL calls only."""
+    clean = re.sub(r'https?://\S+', ' ', post.casefold())
+    geo = _context_section(clean, ('географія','регіон участі',
+             'географіч','територі','location','geography'), limit=700)
+    # The named region must occur as the eligible territory, or the call must
+    # have explicit Ukraine-wide implementation and local organisation scope.
+    if region_root in geo:
+        return True
+    national = bool(re.search(r'вс(?:я|ю)\s+україн|усі\s+област|'
+       r'україн[аіи]\s+та\s+област|\bукраїн[аіи]\b|по\s+всій\s+україні', geo))
+    # Exclude open-world art/education competitions that incidentally accept
+    # residents of the oblast. They are not grants *for the oblast*.
+    if not national or re.search(r'увесь\s+світ|весь\s+світ|'
+                r'worldwide|global|міжнародн', geo):
+        return False
+    return applicant_category_eligible(post, 'organization')
 
 
 def words(s: str) -> list[str]:
@@ -425,6 +558,8 @@ def _semantic_plan(query: str, plan: dict) -> dict:
                 if isinstance(x, str) and x.strip()][:5]
     region = _query_region(query)
     applicant_required = _educational_institution_request(query)
+    audience = requested_audience(query)
+    regional_focus = _regional_focus_query(query)
     # The original user's subject carries more weight than loose LLM synonyms.
     original_groups = _query_topic_groups(query, applicant_required)
     # Educational institutions can apply to *non-education* thematic grants;
@@ -480,6 +615,7 @@ def _semantic_plan(query: str, plan: dict) -> dict:
         'topic_groups': broad_groups,
         'topic_synonyms': synonym_groups,
         'region_root': region,
+        'audience': audience, 'regional_focus': regional_focus,
         'applicant_required': applicant_required,
         'applicant_phrases': ['заклад освіти', 'освітній заклад', 'навчальний заклад',
                               'школа', 'ліцей', 'гімназія', 'університет', 'коледж',
@@ -610,10 +746,15 @@ def _candidate_matches_subject(text: str, plan: dict) -> tuple[bool, int]:
                     and any(_phrase_hit(intro[:700], [x]) for x in alternate)):
                 return False, 0
             score += 4
+    if not applicant_category_eligible(text, plan.get('audience', 'any')):
+        return False, 0
     if plan.get('applicant_required') and not _applicant_eligible(
             text, plan.get('applicant_phrases') or []):
         return False, 0
     if not _region_eligible(text, plan.get('region_root') or ''):
+        return False, 0
+    if plan.get('regional_focus') and not _regional_focused_eligible(
+            text, plan.get('region_root', '')):
         return False, 0
     # Applicant/region-only queries still have valid candidates.
     if not topic_groups:
@@ -692,15 +833,221 @@ def dedupe_programmes(rows: list[dict]) -> list[dict]:
     return output
 
 
+
+# Multi-step Telegram menu: explicit filters travel from private Worker/D1 to GitHub
+# without chat IDs, profiles, or any other subscriber identification.
+MENU_SECTORS = {
+    'education': ('освіт', 'навчан', 'школ', 'університет', 'коледж', 'education',
+                  'learning', 'наук', 'scientific', 'science', 'research'),
+    'medical': ('медицин', 'медичн', 'здоров', 'лікуван', 'health', 'medical',
+                'medicine', 'hospital', 'клінік'),
+    'culture': ('культур', 'мистец', 'худож', 'театр', 'кіно', 'музик', 'artist',
+                'cinema', 'culture', 'creative', 'exhibition'),
+    'environment': ('еколог', 'довкіл', 'природ', 'клімат', 'climate', 'environment',
+                    'biodivers', 'зелен'),
+    'it': ('програмн', 'комп’ютер', "комп'ютер", 'компютер', 'цифров',
+           'інформаційн', 'software', 'digital', 'technology', 'computer',
+           'кібер', 'cyber', 'штучн', 'artificial intelligence'),
+    'social': ('соціальн', 'гуманітар', 'психолог', 'ветеран', 'впо', 'вразлив',
+               'social', 'humanitarian', 'inclusion', 'displaced'),
+    'recovery': ('відбудов', 'відновлен', 'інфраструктур', 'громад', 'recovery',
+                 'reconstruction', 'community development'),
+    'agriculture': ('сільськ', 'аграрн', 'фермер', 'землероб', 'бджільниц',
+                    'agri', 'farming', 'crop', 'soil'),
+    'media': ('журналіст', 'медіа', 'редакц', 'телебач', 'змі', 'media',
+              'journalism', 'newsroom', 'press'),
+    'rights': ('правозах', 'права людини', 'дискримінац', 'рівност',
+               'human rights', 'democracy', 'правов'),
+    'business': ('бізнес', 'підприємниц', 'стартап', 'інновац', 'бізнес',
+                 'entrepreneur', 'startup', 'innovation', 'business'),
+}
+# Region is a geographic eligibility condition. Do not mix Kyiv city and Kyiv oblast.
+MENU_REGIONS = {
+ 'vinnytsia': ('вінниц',), 'volyn': ('волин',), 'dnipro': ('дніпропетров',),
+ 'donetsk': ('донецьк',), 'zhytomyr': ('житомир',), 'zakarpattia': ('закарпат',),
+ 'zaporizhzhia': ('запоріз',), 'ivano': ('івано-франків',), 'kyiv_obl': ('київськ',),
+ 'kirovohrad': ('кіровоград',), 'luhansk': ('луган',), 'lviv': ('львів',),
+ 'mykolaiv': ('миколаїв',), 'odesa': ('одеськ', 'одес'), 'poltava': ('полтав',),
+ 'rivne': ('рівнен',), 'sumy': ('сумськ',), 'ternopil': ('тернопіл',),
+ 'kharkiv': ('харків',), 'kherson': ('херсон',), 'khmelnytskyi': ('хмельницьк',),
+ 'cherkasy': ('черкас',), 'chernivtsi': ('чернівец', 'чернівець',),
+ 'chernihiv': ('чернігів',), 'kyiv_city': ('м. київ', 'місто київ', 'києві'),
+ 'crimea': ('крим', 'севастопол',),
+}
+MENU_AUDIENCES = {'nonprofit','commercial','individual','all'}
+MENU_GEOS = {'ukraine','region','international','all'}
+MENU_AUDIENCE_LABELS = {
+ 'nonprofit': 'Некомерційна організація',
+ 'commercial': 'Комерційна організація / ФОП',
+ 'individual': 'Фізична особа', 'all': 'Усі категорії заявників',
+}
+MENU_SECTOR_LABELS = {
+ 'education': 'освіта та наука', 'medical': 'медицина',
+ 'culture': 'культура та мистецтво', 'environment': 'екологія',
+ 'it': 'інформаційні технології', 'social': 'соціальна та гуманітарна сфера',
+ 'recovery': 'відбудова та розвиток громад',
+ 'agriculture': 'сільське господарство', 'media': 'медіа та журналістика',
+ 'rights': 'права людини', 'business': 'підприємництво та інновації',
+}
+MENU_REGION_LABELS = {
+ 'vinnytsia':'Вінницька область', 'volyn':'Волинська область',
+ 'dnipro':'Дніпропетровська область', 'donetsk':'Донецька область',
+ 'zhytomyr':'Житомирська область', 'zakarpattia':'Закарпатська область',
+ 'zaporizhzhia':'Запорізька область', 'ivano':'Івано-Франківська область',
+ 'kyiv_obl':'Київська область', 'kirovohrad':'Кіровоградська область',
+ 'luhansk':'Луганська область', 'lviv':'Львівська область',
+ 'mykolaiv':'Миколаївська область', 'odesa':'Одеська область',
+ 'poltava':'Полтавська область', 'rivne':'Рівненська область',
+ 'sumy':'Сумська область', 'ternopil':'Тернопільська область',
+ 'kharkiv':'Харківська область', 'kherson':'Херсонська область',
+ 'khmelnytskyi':'Хмельницька область', 'cherkasy':'Черкаська область',
+ 'chernivtsi':'Чернівецька область', 'chernihiv':'Чернігівська область',
+ 'kyiv_city':'місто Київ', 'crimea':'АР Крим та Севастополь',
+}
+
+
+def normalized_menu_facets(raw: object) -> dict | None:
+    """Validate only whitelist selections from Worker. No private IDs are stored."""
+    if not isinstance(raw, dict):
+        return None
+    aud, geo = raw.get('audience'), raw.get('geo')
+    if aud not in MENU_AUDIENCES or geo not in MENU_GEOS:
+        return None
+    sectors = raw.get('sectors')
+    if not isinstance(sectors, list) or len(sectors) > 12:
+        return None
+    if 'all' in sectors:
+        sectors = ['all']
+    elif any(x not in MENU_SECTORS for x in sectors):
+        return None
+    region = raw.get('region') if geo == 'region' else ''
+    if geo == 'region' and region not in MENU_REGIONS:
+        return None
+    detail = normalize_search_query(str(raw.get('detail') or ''))[:180]
+    custom_sector = normalize_search_query(str(raw.get('custom_sector') or ''))[:60]
+    # A custom sector is an additional selected topic. "all" cancels it.
+    if sectors == ['all']:
+        custom_sector = ''
+    if not sectors and not custom_sector:
+        return None
+    return dict(audience=aud, sectors=list(dict.fromkeys(sectors)),
+                custom_sector=custom_sector, geo=geo, region=region,
+                detail=detail)
+
+
+def _menu_audience_eligible(post: str, audience: str) -> bool:
+    if audience == 'all':
+        return True
+    if audience == 'nonprofit':
+        return applicant_category_eligible(post, 'organization')
+    if audience == 'individual':
+        return applicant_category_eligible(post, 'individual')
+    # A company mentioned as an organizer or sponsor is not an eligible applicant.
+    clean = re.sub(r'https?://\S+', ' ', post.casefold())
+    elig = _context_section(clean, ('хто може', 'хто подає', 'заявник', 'учасник',
+                                    'для кого', 'eligib', 'who can apply'), limit=700)
+    introductory = '\n'.join(clean.splitlines()[:5])
+    pat = (r'\b(?:фоп|тов|пп|firm|smes?|startup|startups|companies|businesses)\b|'
+           r'підприємц\w*|підприємств\w*|компані\w*|стартап\w*|'
+           r'приватн\w*\s+(?:компані|підприємств)|'
+           r'комерційн\w*\s+організаці|small and medium enterprises')
+    return bool(re.search(pat, elig, re.I) or
+                re.search(r'(?:для|можуть подат|запрошу\w*|eligible for)\s*.{0,85}'+pat,
+                          introductory, re.I))
+
+
+def _menu_geography_eligible(post: str, facets: dict) -> bool:
+    mode=facets['geo']
+    if mode == 'all':
+        return True
+    clean=re.sub(r'https?://\S+|#[^\s]+', ' ', post.casefold())
+    geo=_context_section(clean, ('географія', 'регіон участі', 'країни участі',
+                                 'географіч', 'територі', 'location', 'geography'), limit=750)
+    intro='\n'.join(clean.splitlines()[:5])
+    nationwide=bool(re.search(r'вс[яю]\s+україн|по\s+всій\s+україні|'
+           r'усі\s+област\w*\s+україн|вся територія україни|'
+           r'\bукраїн[аіи]\b',geo))
+    global_=bool(re.search(r'увесь\s+світ|весь\s+світ|з\s+усього\s+світу|'
+           r'global|worldwide|international|міжнародн|будь.як\w*\s+країн',geo+' '+intro))
+    if mode=='ukraine':
+        return nationwide or 'україн' in intro or global_
+    if mode=='international':
+        return global_ or bool(re.search(r'країни\s+єс|європейськ\w*\s+союз|'
+                  r'країни-учасниці|асоційован\w*\s+країн',geo))
+    aliases=MENU_REGIONS[facets['region']]
+    if any(alias in geo for alias in aliases):
+        return True
+    # Kyiv city and Kyiv oblast should not be matched by generic city mention.
+    if facets['region']=='kyiv_city':
+        return nationwide and not global_
+    return nationwide and not global_
+
+
+def _menu_sector_eligible(post: str, facets: dict) -> bool:
+    if 'all' in facets['sectors']:
+        return True
+    positive=_searchable_positive_text(post)
+    # Subject/activity is not the same as a donor's name or incidental criteria.
+    title='\n'.join(positive.splitlines()[:9])
+    activity=_context_section(positive, ('що підтриму', 'напрям', 'фінансуються',
+                    'мета програми', 'тематика', 'activities', 'projects supported'), limit=560)
+    scope=title+'\n'+activity
+    for sector in facets['sectors']:
+        if any(term in scope for term in MENU_SECTORS.get(sector, ())):
+            return True
+    custom=_specific_terms(facets.get('custom_sector') or '')
+    return bool(custom and _phrase_hit(scope, custom))
+
+
+def _menu_eligible(post: str, facets: dict) -> bool:
+    return (_menu_audience_eligible(post, facets['audience']) and
+            _menu_geography_eligible(post, facets) and
+            _menu_sector_eligible(post, facets))
+
+
+def _menu_plan(facets: dict, query: str) -> dict:
+    # For menu requests with a concrete detail, run the existing semantic AI
+    # *only on that detail*; applicant, sector and geography are hard filters.
+    detail=facets.get('detail') or ''
+    if detail:
+        _title, plan=ai_expand(detail)
+    else:
+        plan=dict(version=3, title='Тематичний каталог грантів', subject='',
+                  activity='',applicant='',requirements=[],topic_groups=[],
+                  topic_synonyms=[],semantic_terms=[],query_anchors=[],
+                  audience='any',region_root='',regional_focus=False,
+                  applicant_required=False)
+    sectors=([MENU_SECTOR_LABELS[k] for k in facets['sectors'] if k in MENU_SECTOR_LABELS]
+             + ([facets['custom_sector']] if facets.get('custom_sector') else []))
+    topic_label=', '.join(sectors) if sectors else 'усі сфери діяльності'
+    applicant_label=MENU_AUDIENCE_LABELS[facets['audience']]
+    where={'ukraine':'Україна','international':'міжнародні можливості',
+           'all':'усі регіони','region':MENU_REGION_LABELS.get(facets.get('region'),'')}
+    plan['facets']=facets
+    plan['applicant']=applicant_label
+    plan['activity']=facets.get('detail') or topic_label
+    plan['subject']=facets.get('detail') or topic_label
+    plan['requirements']=(list(plan.get('requirements') or []) + [
+        'Тип заявника (обов’язково): '+applicant_label,
+        'Сфери (будь-яка обрана): '+topic_label,
+        'Географія (обов’язково): '+where[facets['geo']],
+    ])[:8]
+    plan['audience']='any'  # Hard audience check is in _menu_eligible.
+    plan['region_root']=''
+    plan['regional_focus']=False
+    plan['applicant_required']=False
+    plan['version']=3
+    return plan
+
 def rank_posts(rows: list[dict], query: str, keywords: list[str] | dict,
-               now: date | None = None) -> list[dict]:
+               now: date | None = None, facets: dict | None = None) -> list[dict]:
     """First-stage semantic retrieval; no hard cap on eligible results.
 
     'keywords' accepts the new intent plan, and legacy lists for existing tests
     and any checkpoint from an older release. Live AI always supplies a plan.
     """
     now = now or today_kyiv()
-    plan = _semantic_plan(query, keywords) if isinstance(keywords, dict) else None
+    plan = (keywords if facets is not None else _semantic_plan(query, keywords)) if isinstance(keywords, dict) else None
     if plan is None:
         # Retain compatibility with preexisting unit tests and saved states.
         old_terms = variants(query, keywords)
@@ -708,7 +1055,9 @@ def rank_posts(rows: list[dict], query: str, keywords: list[str] | dict,
     selected = []
     for row in rows:
         content = row.get('text') or ''
-        if not content or not strict_topic_match(query, content):
+        if not content or (facets is None and not strict_topic_match(query, content)):
+            continue
+        if facets is not None and not _menu_eligible(content, facets):
             continue
         deadline = deadline_from_post(content, now=now)
         if not deadline or deadline < now:
@@ -897,7 +1246,11 @@ def ai_select(query: str, ranked: list[dict]) -> list[int]:
         'Різні теми в одному запиті є альтернативами (АБО); вимоги до типу '
         'заявника та географії є обов’язковими (ТА). Для етнотуризму не '
         'підходить просто загальний туризм; для бджільництва не підходить '
-        'загальний захист тварин. Для закладів освіти не підходять '
+        'загальний захист тварин. ' 
+        'Для ГО та благодійних організацій не обирай персональні стипендії і ' 
+        'можливості лише для фізичних осіб. Для індивідуальних заявників ' 
+        'не обирай гранти лише для організацій. ' 
+        'Для закладів освіти не підходять '
         'студентські премії чи навчальні програми, де заявник лише фізична особа. '
         'Локація Полтавська область не дорівнює будь-яка окрема область України; '
         'загальноукраїнський конкурс підходить. '
@@ -928,7 +1281,8 @@ def ai_select(query: str, ranked: list[dict]) -> list[int]:
             })
         intent = ({k: plan.get(k) for k in
                    ('subject', 'activity', 'applicant', 'requirements',
-                    'topic_groups', 'region_root', 'applicant_required')}
+                    'topic_groups', 'region_root', 'applicant_required',
+                    'audience', 'regional_focus', 'facets')}
                   if isinstance(plan, dict) else {'original_query': query})
         result = cf_ai(system, {'query': query, 'intent': intent, 'candidates': candidates}, max_tokens=550)
         raw = result.get('selected_ids')
@@ -1296,7 +1650,20 @@ def catalog_card_fields(post_text: str) -> dict[str, str]:
     else:
         funding = ''
 
-    eligibility = '; '.join(take_block('eligibility')[:2])
+    def clean_fact(value: str, fallback: str) -> str:
+        """Never print dangling clauses or duplicated semicolon separators."""
+        value = re.sub(r'\s*;+\s*', '; ', str(value)).strip(' ;:,')
+        value = re.sub(r';\s*;', ';', value).strip(' ;:')
+        # Some archive bullets finish with "які", "якщо", etc. There is no
+        # safe way to reconstruct a missing requirement: refer to the post.
+        if (not value or re.search(r'(?:\b(?:які|який|яка|що|коли|якщо|зокрема|або|та|і|чи|для|на|при|із|з)\b|[,;:])\s*$', value, re.I)
+                or value.endswith(('…','...'))):
+            return fallback
+        return value
+
+    funding = clean_fact(funding, 'Деталі фінансування — в дописі.') if funding else ''
+    eligibility = '; '.join(x.strip(' ;') for x in take_block('eligibility')[:2])
+    eligibility = clean_fact(eligibility, 'Умови участі — в дописі.') if eligibility else ''
     geo_candidates = take_block('geography')
     geography = next((x for x in geo_candidates if
                       not re.search(r'\b\d{1,2}:\d{2}\b', x)), '')
@@ -1305,7 +1672,7 @@ def catalog_card_fields(post_text: str) -> dict[str, str]:
             re.search(r'\b(?:Україн\w*\s+(?:мож\w*|допуска\w*|підход\w*)|Україна\s+(?:підход\w*|мож\w*|є\s+асоційован))', x, re.I)
             and not re.search(r'не\s+(?:мож\w*|допуска\w*|підход\w*)', x, re.I)), '')
         geography = ukrainian if not re.search(r'\b\d{1,2}:\d{2}\b', ukrainian) else ''
-    warning = '; '.join(take_block('warning')[:2])
+    warning = clean_fact('; '.join(take_block('warning')[:2]), 'Особливі умови — в дописі.')
     if not warning:
         # Especially important for international calls where the channel
         # expressly tells Ukrainian applicants to check eligibility with the
@@ -1627,7 +1994,8 @@ def pdf_catalog(path: Path, title: str, topic: str, rows: list[dict], stamp: dat
           colors.HexColor('#CCE2E7'))
     draw_text('БЕЗКОШТОВНО • ДЛЯ ВСІХ ПІДПИСНИКІВ', 22*mm, 57*mm, 8.4, bold,
               colors.HexColor('#CEE5EB'))
-    c.linkURL(f'https://t.me/{BOT}',(22*mm,29*mm,W-22*mm,60*mm),relative=0)
+    c.linkURL(verified_order_url() or f'https://t.me/{CHANNEL}',
+              (22*mm,29*mm,W-22*mm,60*mm),relative=0)
     c.showPage()
     # CONTENT: short cards remain two per A4; longer ones get a full page.
     number = 0
@@ -1841,6 +2209,12 @@ def import_gateway_requests(state: dict) -> None:
             request_id = int(item["id"])
             topic = sanitize_user_text(str(item["topic"]))
             requested_at = str(item["requested_at"])
+            facets = (normalized_menu_facets(item.get('facets'))
+                      if item.get('facets') is not None else None)
+            if item.get('facets') is not None and facets is None:
+                # Never turn a damaged structured search into an unfiltered catalog.
+                print('Cloudflare: некоректні фільтри, запит залишено в D1 для виправлення.')
+                continue
         except (TypeError, ValueError, KeyError):
             continue
         if request_id <= 0 or len(topic) < 10 or len(topic) > 250:
@@ -1852,8 +2226,10 @@ def import_gateway_requests(state: dict) -> None:
             # Worker already replied; do not generate a near-duplicate catalog.
             seen.add(request_id)
             continue
-        state.setdefault("queue", []).append({"id": request_id, "topic": topic,
-                                                 "requested_at": requested_at})
+        record = {"id": request_id, "topic": topic, "requested_at": requested_at}
+        if facets is not None:
+            record['facets'] = facets
+        state.setdefault("queue", []).append(record)
         seen.add(request_id)
         received += 1
     state["gateway_seen_ids"] = sorted(seen)[-500:]
@@ -1954,7 +2330,7 @@ def public_no_results_text(item: dict) -> str:
             'ℹ️ Пошук проводиться лише серед дописів каналу. '
             'Це не означає, що таких грантів немає поза архівом.\n\n'
             '💡 Перед новим замовленням перегляньте попередні результати каналу.\n'
-            f'🤖 Замовити каталог: https://t.me/{BOT}')
+            + (f'\n{order_link_line()}' if verified_order_url() else ''))
 
 
 def publish_pending_no_results(state: dict, *, now: datetime | None = None) -> bool:
@@ -2021,7 +2397,10 @@ def make_one_catalog(state: dict, rows: list[dict], *, dry_run=False) -> bool:
     entry = state["queue"][0]
     if entry.get("next_retry_at") and datetime.fromisoformat(entry["next_retry_at"]) > now:
         return False
-    query = entry["topic"]
+    query = normalize_search_query(entry["topic"])
+    facets = normalized_menu_facets(entry.get('facets')) if entry.get('facets') is not None else None
+    if entry.get('facets') is not None and facets is None:
+        raise RuntimeError('Невірні фільтри в черзі, публікацію зупинено')
     # Repeated queries do not call AI and do not create a second public post.
     if recent_no_result(state, query) is not None:
         mark_no_results(state, entry, 'no_candidate')
@@ -2035,8 +2414,12 @@ def make_one_catalog(state: dict, rows: list[dict], *, dry_run=False) -> bool:
         # Old broad-keyword progress is not safe to publish; rebuild semantic intent.
         # Expand search once, then freeze the full candidate ID list. The list
         # contains ALL relevant archive prefilter hits, without a numeric cap.
-        title, keywords = ai_expand(query)
-        ranked = rank_posts(rows, query, keywords)
+        if facets is not None:
+            keywords = _menu_plan(facets, query)
+            title = query[:100]
+        else:
+            title, keywords = ai_expand(query)
+        ranked = rank_posts(rows, query, keywords, facets=facets)
         if not ranked:
             mark_no_results(state, entry, 'no_candidate')
             state["queue"].pop(0)
@@ -2056,7 +2439,7 @@ def make_one_catalog(state: dict, rows: list[dict], *, dry_run=False) -> bool:
         title = review["title"]
         keywords = review["keywords"]
         # Validate the ranking again: expired/deleted posts cannot be published.
-        ranked = rank_posts(rows, query, keywords)
+        ranked = rank_posts(rows, query, keywords, facets=facets)
 
     lookup = {int(r["id"]): r for r in ranked}
     candidate_ids = review["candidate_ids"]
@@ -2101,7 +2484,7 @@ def make_one_catalog(state: dict, rows: list[dict], *, dry_run=False) -> bool:
                f"📌 Тема: {query[:190]}\n📄 Можливостей: {len(picked)}.\n"
                "🔗 У PDF активні посилання ведуть до публікацій каналу.\n"
                "⚠️ Дедлайни взято з дописів; перед поданням перевірте умови у першоджерелі з відповідного допису.\n\n"
-               f"🤖 Замовити добірку: https://t.me/{BOT}")
+               + order_link_line())
     message_id = upload_pdf(pdf, caption)
     channel_url = f"https://t.me/{CHANNEL}/{message_id}"
     state["published"].append({"id": entry["id"], "topic": query, "title": title,
@@ -2157,6 +2540,7 @@ def main():
     if not token:
         raise RuntimeError("GitHub Secret NGO_GRANTS_AI_BOT_TOKEN відсутній")
     state = load_state()
+    refresh_bot_identity()
     configure_bot_profile(state)
     if os.environ.get("NGO_BOT_GATEWAY_URL"):
         # A bot with an active webhook CANNOT use Telegram getUpdates.
