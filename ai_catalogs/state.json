@@ -589,7 +589,8 @@
     272838736,
     272838749,
     272838753,
-    272838754
+    272838754,
+    272838797
   ],
   "no_results": [
     {
@@ -609,6 +610,26 @@
       "status": "published",
       "published_on": "2026-10-18",
       "channel_url": "https://t.me/ngo_grants/3306"
+    },
+    {
+      "id": 272838797,
+      "topic": "Документальне кіно; для некомерційних організацій; сфери: Культура та мистецтво, Медіа та журналістика; міжнародні",
+      "reason": "no_candidate",
+      "checked_on": "2026-10-18",
+      "status": "published",
+      "facets": {
+        "audience": "nonprofit",
+        "sectors": [
+          "culture",
+          "media"
+        ],
+        "custom_sector": "",
+        "geo": "international",
+        "region": "",
+        "detail": "Документальне кіно"
+      },
+      "published_on": "2026-10-18",
+      "channel_url": "https://t.me/ngo_grants/3322"
     }
   ]
 }
