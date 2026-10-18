@@ -6,13 +6,7 @@
     "6f074abb4977478f7f244ee5728e52": "2026-10-16",
     "ec61aa3a0c9bd9ff9dc0ff615b5a60": "2026-10-16"
   },
-  "queue": [
-    {
-      "id": 272838754,
-      "topic": "Гранти для місцевих НГО",
-      "requested_at": "2026-10-18T06:36:54.622Z"
-    }
-  ],
+  "queue": [],
   "published": [
     {
       "id": 272838672,
@@ -606,6 +600,15 @@
       "status": "published",
       "published_on": "2026-10-18",
       "channel_url": "https://t.me/ngo_grants/3295"
+    },
+    {
+      "id": 272838754,
+      "topic": "Гранти для місцевих НГО",
+      "reason": "no_candidate",
+      "checked_on": "2026-10-18",
+      "status": "published",
+      "published_on": "2026-10-18",
+      "channel_url": "https://t.me/ngo_grants/3306"
     }
   ]
 }
