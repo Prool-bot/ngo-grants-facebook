@@ -73,7 +73,7 @@ MIN_GAP_HOURS = 2
 # Review every candidate over successive scheduled runs to preserve free AI credits.
 AI_REVIEW_BATCH_SIZE = 12
 AI_REVIEW_BATCHES_PER_RUN = 3
-SEARCH_ENGINE_VERSION = 4  # NGO Grants AI v5.4 semantic retrieval
+SEARCH_ENGINE_VERSION = 6  # NGO Grants AI v5.5: evidence-led two-pass semantic retrieval
 # Public status messages are independent of the 3-PDF/day quota.
 MAX_NO_RESULTS_PER_DAY = 3
 NO_RESULTS_REPEAT_DAYS = 7
@@ -341,7 +341,16 @@ DEADLINE_CONTEXT = re.compile(
 def deadline_dates_from_post(text: str) -> list[date]:
     """All explicit deadline dates. Never confuse project dates with deadlines."""
     found: set[date] = set()
-    for fragment in DEADLINE_CONTEXT.findall(text):
+    fragments = DEADLINE_CONTEXT.findall(text)
+    # Some grants describe the deadline BEFORE the action, e.g.
+    # '3 грудня 2026 — обов'язкове попереднє подання' (UPF4).
+    for line in text.splitlines():
+        if re.search(r'(?:попередн\w*\s+поданн\w*|поданн\w*\s+повн\w*'
+                     r'\s+(?:грантов\w*\s+)?заявк\w*|обов.язков\w*\s+попередн\w*\s+поданн\w*)',
+                     line, re.I) and not re.search(r'(?:початок\s+прийом\w*|'
+                     r'відкриття\s+прийом\w*)', line, re.I):
+            fragments.append(line)
+    for fragment in fragments:
         # A later event or project-implementation date on the SAME line is
         # not automatically a second application deadline.
         fragment = re.split(r'(?:період\s+реалізаці\w*|дата\s+(?:події|заходу)|'
@@ -375,6 +384,25 @@ def deadline_from_post(text: str, now: date | None = None) -> date | None:
     today = now or today_kyiv()
     upcoming = [value for value in dates if value >= today]
     return min(upcoming) if upcoming else max(dates)
+
+
+def application_window_starts_from_post(text: str) -> date | None:
+    """Read start of a dated *submission* window without treating it as deadline.
+
+    The end of the window is handled by deadline_dates_from_post().
+    """
+    for line in text.splitlines():
+        if not re.search(r'(?:поданн|прийом|заявок|заявк|submission|applications?)', line, re.I):
+            continue
+        pat = (r'\b(\d{1,2})\s+([а-яіїєґ]+)\s*[—–-]\s*'
+               r'(\d{1,2})\s+([а-яіїєґ]+)\s+(20\d{2})\b')
+        m = re.search(pat, line, re.I)
+        if m and m.group(2).casefold() in UA_MONTHS and m.group(4).casefold() in UA_MONTHS:
+            start = _parse_day(m.group(1), str(UA_MONTHS[m.group(2).casefold()]),m.group(5))
+            finish = _parse_day(m.group(3),str(UA_MONTHS[m.group(4).casefold()]),m.group(5))
+            if start and finish and start <= finish:
+                return start
+    return None
 
 
 def ongoing_applications_from_post(text: str) -> bool:
@@ -646,6 +674,16 @@ def _query_topic_groups(query: str, applicant_only: bool = False) -> list[list[s
     if applicant_only:
         return []
     q = _query_subject_text(query)
+    # A conjunction between INDEPENDENT subjects is OR ("етнотуризм та
+    # бджільництво"). A possessive reference to the same beneficiary group
+    # is NOT an independent grant subject ("ветеранів та їхніх родин").
+    # Otherwise "їхніх родин" becomes a standalone search topic and lets in
+    # unrelated family/health grants. Preserve the full original query for AI.
+    q = re.sub(
+        r"(?:\s*,\s*|\s+(?:та|і|й)\s+)"
+        r"(?:(?:член\w*|представник\w*)\s+)?"
+        r"(?:їх(?:н\w*)?|сво\w*)\s+(?:родин\w*|сім\w*)",
+        "", q, flags=re.I)
     parts = re.split(r'\s*[,;]\s*|\s+(?:та|й)\s+', q)
     results = []
     for part in parts:
@@ -919,6 +957,51 @@ def _title_signature(title: str) -> set[str]:
             and not any(w.startswith(z) for z in generic)}
 
 
+def _same_round_by_evidence(a: dict, b: dict) -> bool:
+    """Recognize reposted grant with changed title, URL and introductory text.
+
+    Must share: deadline + distinctive organizer + funding amount + at least
+    three named geographic restrictions. Avoid deduplicating grant rounds from
+    the same donor merely because they share a landing page.
+    """
+    if not a.get('_deadline') or a.get('_deadline') != b.get('_deadline'):
+        return False
+    t1, t2 = a.get('text') or '', b.get('text') or ''
+    if not t1 or not t2:
+        return False
+    proper_stop = {'NGO', 'GRANTS', 'USD', 'EUR', 'UAH', 'PDF', 'USA', 'THE',
+                   'CALL', 'OPEN', 'FOR', 'ГО', 'ООН', 'ЗМІ'}
+    def acronyms(s: str) -> set[str]:
+        return {x for x in re.findall(r'(?<![A-Za-zА-ЯІЇЄҐ])[A-ZА-ЯІЇЄҐ]{4,12}(?![A-Za-zА-ЯІЇЄҐ])', s[:1000])
+                if x not in proper_stop}
+    donor = acronyms(t1) & acronyms(t2)
+    if not donor:
+        return False
+    money = re.compile(r'(?:[$€₴]\s*)(\d{1,3}(?:[\s,]\d{3}){0,3}|\d{4,9})'
+                       r'(?:\s*(тис\w*|млн\w*))?', re.I)
+    def monetary(s: str) -> set[str]:
+        found = set()
+        for raw, mult in money.findall(s):
+            digits = re.sub(r'\D', '', raw)
+            if not digits:
+                continue
+            amount = int(digits) * (1000000 if mult.startswith('млн') else
+                                    1000 if mult.startswith('тис') else 1)
+            if amount >= 1000:
+                found.add(str(amount))
+        return found
+    if not (monetary(t1) & monetary(t2)):
+        return False
+    roots = ('волин', 'закарпат', 'запоріз', 'полтав', 'черкас', 'черніве',
+             'харків', 'сумськ', 'херсон', 'чернігів', 'миколаїв',
+             'дніпропетров', 'одеськ', 'львів', 'київськ', 'рівнен',
+             'вінниц', 'житомир', 'кіровоград', 'тернопіл', 'донец', 'луган')
+    same_regions = [r for r in roots if r in t1.casefold() and r in t2.casefold()]
+    if len(same_regions) < 3:
+        return False
+    return True
+
+
 def dedupe_programmes(rows: list[dict]) -> list[dict]:
     """Conservatively merge reposts, even with different official URL variants.
 
@@ -928,6 +1011,8 @@ def dedupe_programmes(rows: list[dict]) -> list[dict]:
     output: list[dict] = []
     seen_urls: dict[str, list[dict]] = {}
     for row in rows:
+        if any(_same_round_by_evidence(row, earlier) for earlier in output):
+            continue
         urls = row.get('canonical_urls') or row.get('urls') or []
         keys = {_clean_official_url(str(u)) for u in urls}
         keys.discard('')
@@ -976,8 +1061,10 @@ MENU_SECTORS = {
     'it': ('програмн', 'комп’ютер', "комп'ютер", 'компютер', 'цифров',
            'інформаційн', 'software', 'digital', 'technology', 'computer',
            'кібер', 'cyber', 'штучн', 'artificial intelligence'),
-    'social': ('соціальн', 'гуманітар', 'психолог', 'ветеран', 'впо', 'вразлив',
-               'social', 'humanitarian', 'inclusion', 'displaced'),
+    'social': ('соціальн', 'гуманітар', 'психолог', 'психосоц', 'психічн',
+               'ментальн', 'ветеран', 'впо', 'вразлив', 'реінтеграц',
+               'social', 'humanitarian', 'inclusion', 'displaced',
+               'mental health', 'psychosocial'),
     'recovery': ('відбудов', 'відновлен', 'інфраструктур', 'громад', 'recovery',
                  'reconstruction', 'community development'),
     'agriculture': ('сільськ', 'аграрн', 'фермер', 'землероб', 'бджільниц',
@@ -1152,6 +1239,12 @@ def _menu_plan(facets: dict, query: str) -> dict:
     where={'ukraine':'Україна','international':'міжнародні можливості',
            'all':'усі регіони','region':MENU_REGION_LABELS.get(facets.get('region'),'')}
     plan['facets']=facets
+    # Keep the COVER meaningful. Menu metadata must not consume title space
+    # and must never end mid-word (previously: "сфери: Соціальна т").
+    focus = detail or (', '.join(sectors) if sectors else 'Грантові можливості')
+    geo_name = where[facets['geo']]
+    plan['title'] = sanitize_user_text(
+        focus + (' — ' + geo_name if geo_name not in ('усі регіони',) else ''))[:110]
     plan['applicant']=applicant_label
     plan['activity']=facets.get('detail') or topic_label
     plan['subject']=facets.get('detail') or topic_label
@@ -1166,6 +1259,165 @@ def _menu_plan(facets: dict, query: str) -> dict:
     plan['applicant_required']=False
     plan['version']=SEARCH_ENGINE_VERSION
     return plan
+
+# v5.5: a universal *two-pass* retrieval pattern. The model must only
+# validate evidence in archived posts; lexical lookup itself is deliberately
+# recall-oriented, not a final eligibility decision. These tightly scoped
+# synonym families are reusable concepts, NEVER donor/program whitelists.
+# Do not add generic roots such as "health", "families", "development" by
+# themselves: doing so causes the false-positive matches found in v5.4.
+SEARCH_CONCEPTS = {
+    'psychosocial_services': (
+        'психосоц', 'психологічн', 'психічн здоров', 'ментальн здоров',
+        'mental health', 'psychosocial', 'psychological support',
+        'mental wellbeing', 'mental well-being', 'пзпсп', 'mhp ss', 'mhpss',
+    ),
+    'veterans': (
+        'ветеран', 'ветеранк', 'veteran', 'демобілізован',
+        'учасник бойових дій', 'учасників бойових дій',
+    ),
+    'children': ('дитин', 'дітей', 'дитяч', 'підлітк', 'children', 'child welfare'),
+    'disability': ('інвалідн', 'інвалідністю', 'persons with disabilities',
+                   'disability', 'інклюзії осіб з інвалідністю'),
+    'documentary_film': ('документальне кіно', 'документальн фільм',
+                         'documentary film', 'documentary filmmaking'),
+    'beekeeping': ('бджільниц', 'пасічниц', 'пасічник', 'beekeeping', 'apiary'),
+}
+# Service + beneficiary in a single dependent user request has AND semantics.
+# An open funding opportunity with a broader beneficiary population may still
+# qualify CONDITIONALLY, but only if the activity can actually be funded.
+BENEFICIARY_CONCEPTS = {'veterans', 'children', 'disability'}
+SERVICE_CONCEPTS = {'psychosocial_services'}
+
+
+def _concept_hit(text: str, terms: tuple[str, ...]) -> bool:
+    clean = re.sub(r'https?://\S+|#[^\s]+', ' ',
+                   unicodedata.normalize('NFKC', text).casefold())
+    for term in terms:
+        if term in clean:
+            return True
+        # Stems plus close-distance matching cover Ukrainian word endings:
+        # 'психічн здоров' must match 'психічне здоров’я'.
+        if ' ' in term and _phrase_hit(clean, _specific_terms(term), max_distance=5):
+            return True
+    return False
+
+
+def _intent_concepts(user_subject: str) -> tuple[list[str], list[str]]:
+    subject = _query_subject_text(user_subject)
+    services = [key for key in SERVICE_CONCEPTS
+                if _concept_hit(subject, SEARCH_CONCEPTS[key])]
+    beneficiaries = [key for key in BENEFICIARY_CONCEPTS
+                     if _concept_hit(subject, SEARCH_CONCEPTS[key])]
+    return sorted(services), sorted(beneficiaries)
+
+
+def _funded_activity_text(post: str) -> str:
+    """Only positive scope; remove speculative Ukraine commentary / tag sections.
+
+    These paragraphs describe hypothetical uses and should not be treated as
+    evidence of funding eligibility (HABRI was a concrete failure of v5.4).
+    """
+    positive = _searchable_positive_text(post)
+    useful = []
+    for line in positive.splitlines():
+        trimmed = line.strip(' •\t')
+        if re.match(r'^(?:🇺🇦\s*)?(?:для\s+україн\w*|українськ\w*\s+' 
+                    r'(?:дослідник\w*|заявник\w*|організаці\w*)\s+мож\w*|'
+                    r'приклади\s+можлив\w*\s+тем)', trimmed, re.I):
+            continue
+        if re.search(r'\b(?:можуть\s+запропонувати|можна\s+було\s+б|'
+                     r'could\s+propose|potential\s+topics)\b', trimmed, re.I):
+            continue
+        useful.append(line)
+    return '\n'.join(useful)
+
+
+def _funded_service_evidence(post: str, services: list[str]) -> tuple[bool, int]:
+    """Find the *funded work*, not a tag, incidental beneficiary, or URL.
+
+    Broad calls mentioning fundable mental-health work can be sent to AI even
+    if they do not explicitly name the user's beneficiary group. This mirrors
+    manual discovery of cross-sector opportunities and keeps strict final AI
+    validation of eligibility, activities and type of award.
+    """
+    if not services:
+        return False, 0
+    text = _funded_activity_text(post)
+    lines = text.splitlines()
+    if not lines:
+        return False, 0
+    heading_and_intro = '\n'.join(lines[:12])
+    scopes = [heading_and_intro]
+    for index, line in enumerate(lines):
+        if re.search(r'(?:що\s+підтриму|що\s+фінансу|напрям\w*|'
+                     r'тематик\w*|пріоритет\w*|фінансуван\w*|'
+                     r'основн\w*\s+сфер\w*|підтримуються|'
+                     r'eligible\s+activities|supported\s+projects|'
+                     r'focus\s+areas|охорона\s+здоров)', line, re.I):
+            scopes.append('\n'.join(lines[index:index+18])[:1350])
+    if not any(_concept_hit(scope, SEARCH_CONCEPTS[k])
+               for k in services for scope in scopes):
+        return False, 0
+    # Researching mental health is not the same activity as delivering
+    # psychosocial help. A service request must not return research-only funds
+    # even when research subjects include veterans.
+    opening = '\n'.join(lines[:15])
+    research_only = bool(re.search(r'(?:досліджен\w*\s+(?:взаємоді|вплив|ролі|зв.язк)|'
+         r'науково.дослідницьк\w*\s+(?:конкурс|грант|програм)|'
+         r'(?:research\s+grants?|scientific\s+research)|'
+         r'проводить\s+міжнародн\w*\s+конкурс\s+науков\w*\s+проєкт)',
+         opening, re.I))
+    # Reject a research-only call only if the source does NOT also explicitly
+    # fund implementation/clinical services or intervention programmes.
+    service_delivery = bool(re.search(r'(?:наданн\w*\s+(?:психолог|психосоц|'
+         r'соціальн\w*\s+послуг)|(?:впроваджен\w*|запуск\w*|розширенн\w*)'
+         r'.{0,65}(?:психосоц|психолог|ментальн)|'
+         r'психосоціальн\w*\s+(?:підтримк|послуг)|'
+         r'mental\s+health\s+(?:services|support|interventions))',
+         '\n'.join(scopes), re.I))
+    if research_only and not service_delivery:
+        return False, 0
+    return True, 7 + (4 if _concept_hit(heading_and_intro, SEARCH_CONCEPTS[services[0]]) else 0)
+
+
+def _other_population_exclusive(post: str, beneficiaries: list[str]) -> bool:
+    """Don't broaden an explicitly exclusive beneficiary class."""
+    if not beneficiaries:
+        return False
+    scope = _funded_activity_text(post)
+    if any(_concept_hit(scope, SEARCH_CONCEPTS[g]) for g in beneficiaries):
+        return False
+    return bool(re.search(
+        r'(?:виключно|тільки|лише|exclusively|only)\s+'
+        r'(?:для|на|with|for)\s+(?:\w+\s+){0,5}'
+        r'(?:дітей|дитин\w*|підлітк\w*|жінок|дівчат|студент\w*|'
+        r'children|students|women|girls)', scope[:2800], re.I))
+
+
+def _relaxed_subject_candidate(post: str, plan: dict, subject: str) -> tuple[bool, int]:
+    """Secondary discovery pass for dependent requests (activity AND group).
+
+    If a donor funds the activity but permits broad populations, we keep it
+    for AI as CONDITIONAL. Missing group mention is not proof of a group ban;
+    explicit exclusive eligibility still leads to REJECT after AI review.
+    A vague program mentioning just the population is never enough.
+    """
+    services, beneficiaries = _intent_concepts(subject)
+    if not (services and beneficiaries):
+        return False, 0
+    eligible, score = _funded_service_evidence(post, services)
+    if not eligible or _other_population_exclusive(post, beneficiaries):
+        return False, 0
+    evidence = _funded_activity_text(post)
+    group_named = any(_concept_hit(evidence, SEARCH_CONCEPTS[g]) for g in beneficiaries)
+    if group_named:
+        score += 12
+    # A generic award where *only* individual beneficiaries are permitted
+    # cannot become a direct NGO opportunity. The ordinary applicant filter
+    # handles that distinction; final AI validation is always necessary.
+    return True, score
+
 
 def rank_posts(rows: list[dict], query: str, keywords: list[str] | dict,
                now: date | None = None, facets: dict | None = None) -> list[dict]:
@@ -1192,10 +1444,12 @@ def rank_posts(rows: list[dict], query: str, keywords: list[str] | dict,
                 query.casefold()):
             if not _menu_geography_eligible(content, {'geo': 'international'}):
                 continue
+        relaxed, bonus = ((False, 0) if plan is None else
+                          _relaxed_subject_candidate(content, plan, narrow))
         if facets is not None:
             if not _menu_geography_eligible(content, facets):
                 continue
-            if not _menu_sector_eligible(content, facets):
+            if not _menu_sector_eligible(content, facets) and not relaxed:
                 continue
             # Applicant-only and broad-sector searches should remain strict.
             if not (facets.get('detail') or facets.get('custom_sector')) and not _menu_audience_eligible(
@@ -1207,6 +1461,21 @@ def rank_posts(rows: list[dict], query: str, keywords: list[str] | dict,
         if (deadline and deadline < now) or (not deadline and not rolling):
             continue
         if plan is not None:
+            requested_services, requested_people = _intent_concepts(narrow)
+            if requested_services and requested_people:
+                if _other_population_exclusive(content, requested_people):
+                    continue
+                # A narrow service request may never be matched by an
+                # irrelevant scientific study or hypothetical project idea.
+                focus = _funded_activity_text(content)
+                opening = '\n'.join(focus.splitlines()[:12])
+                research_title = bool(re.search(
+                    r'(?:науков\w*\s+(?:проєкт|досліджен)|'
+                    r'досліджен\w*\s+(?:взаємоді|вплив|ролі)|'
+                    r'\bresearch\s+grants?\b)', opening, re.I))
+                has_funded_services, _ = _funded_service_evidence(content, requested_services)
+                if research_title and not has_funded_services:
+                    continue
             match, score = _candidate_matches_subject(content, plan)
             if not match and ((facets and (facets.get('detail') or facets.get('custom_sector')))
                               or (not facets and len(_specific_terms(query)) >= 2)):
@@ -1227,8 +1496,14 @@ def rank_posts(rows: list[dict], query: str, keywords: list[str] | dict,
                 if equivalent and (facets or (not plan.get('region_root') and
                                              not plan.get('applicant_required'))):
                     match, score = True, 6
+            if relaxed:
+                match = True
+                score = max(score, bonus)
             if not match:
                 continue
+            # Retain enough information for AI to distinguish direct and
+            # indirect thematic matches. Only an explicit matching activity
+            # plus population is presumptively direct; model still verifies.
         else:
             lower = unicodedata.normalize('NFKC', content).lower()
             scores = [(3 if t in theme_tokens(query) else 1) for t in key if t in lower]
@@ -1253,17 +1528,23 @@ def rank_posts(rows: list[dict], query: str, keywords: list[str] | dict,
                       if line.strip()), 'Грантова можливість')
         item = dict(row)
         item['_score'] = score
+        item['_relaxed_subject'] = bool(relaxed)
         item['_deadline'] = deadline.isoformat() if deadline else None
         item['_rolling'] = rolling
-        item['_deadline_note'] = (
-            'У публікації декілька строків подання. Пізніший раунд може мати додаткові вимоги.'
-            if len(dates) > 1 else '')
+        opening = application_window_starts_from_post(content)
+        note = ('У публікації декілька строків подання. Пізніший раунд може '
+                'мати додаткові вимоги.' if len(dates) > 1 else '')
+        if opening and opening > now:
+            note = (f'Прийом заявок починається {opening.strftime("%d.%m.%Y")}. '
+                    + note)
+        item['_deadline_note'] = note
         item['_applicant_direct_evidence'] = bool(direct)
         item['_title'] = title[:145]
         if plan is not None:
             item['_semantic_plan'] = plan
         selected.append(item)
-    selected.sort(key=lambda item: (-item['_score'], item['_deadline'] or '9999-12-31', -item['id']))
+    selected.sort(key=lambda item: (-item['_score'], -len(item.get('text') or ''),
+                                    item['_deadline'] or '9999-12-31', -item['id']))
     return dedupe_programmes(selected)
 
 
@@ -1407,6 +1688,28 @@ def candidate_context(post_text: str, query: str, plan: dict | None = None) -> d
     }
 
 
+def _activity_evidence_excerpt(post: str, query: str) -> str:
+    """Small source-quoted lines for AI to verify what donor really supports."""
+    lines = _funded_activity_text(post).splitlines()
+    services, beneficiaries = _intent_concepts(query)
+    focus = [t for k in services + beneficiaries for t in SEARCH_CONCEPTS[k]]
+    if not focus:
+        return candidate_evidence(post, query, max_lines=4)
+    pieces = []
+    for i, line in enumerate(lines):
+        if _concept_hit(line, tuple(focus)):
+            val = line.strip(' •')
+            if val and len(val) < 500:
+                # Keep headings before target lines as evidence of funding mode.
+                prev = next((p.strip() for p in reversed(lines[max(0, i-4):i])
+                             if re.search(r'(?:напрям|підтриму|фінансу|діяльніст|'
+                                          r'досліджен|категорі)', p, re.I)), '')
+                pieces.append((prev[:90] + ': ' if prev else '') + val[:220])
+            if len(pieces) >= 6:
+                break
+    return ' | '.join(pieces)[:800]
+
+
 def ai_classify(query: str, ranked: list[dict]) -> dict[int, str]:
     """LLM labels: direct, conditional, or rejected (omitted).
 
@@ -1433,6 +1736,24 @@ def ai_classify(query: str, ranked: list[dict]) -> dict[int, str]:
         'Приклади назв ролей — це НЕ список дозволених галузей чи автоматичне '
         'підтвердження партнерства. Не домислюй право подання чи можливість '
         'участі через партнера: потрібен обґрунтований зв’язок зі змістом. '
+        'Для складного запиту розділяй фінансовану ДІЯЛЬНІСТЬ і ЦІЛЬОВУ ГРУПУ. '
+        'Наприклад, "психосоціальна підтримка ветеранів" — це ОДИН вид '
+        'допомоги конкретним людям, а не "ветерани АБО психологія". '
+        'DIRECT: джерело явно підтверджує оплату запитаної діяльності для '
+        'цільової групи ТА право обраного заявника. '
+        'CONDITIONAL: джерело явно допускає фінансування саме цієї діяльності, '
+        'але група охоплюється лише через ширші відкриті правила програми, '
+        'або потрібен обов’язковий партнер, консорціум, досвід чи спеціальний '
+        'тип заявника. Вважай цільову групу можливою тільки коли відсутня '
+        'чітка заборона або несумісні вимоги до бенефіціарів. '
+        'REJECT: згадується лише цільова група без відповідної фінансованої '
+        'діяльності; згадується психологія лише як приклад дослідницької '
+        'теми; премія/стипендія фізособі замість проєкту ГО; допомога '
+        'надається лише виключній іншій групі; інформаційна кампанія без '
+        'відкритого гранту; програма фінансує лише наукові дослідження, '
+        'а користувач шукає надання практичних послуг. '
+        'НЕ зараховуй випадкові згадки у хештегах і припущення автора допису '
+        'про можливу тематику як доказ допустимої діяльності. '
         'Фестиваль не називай виробничим грантом. Грошова премія не гарантована. '
         'НГО не вважай кінокомпанією лише через статус НГО. '
         'Для фізичної особи грант тільки юридичній особі не є прямим. '
@@ -1455,6 +1776,9 @@ def ai_classify(query: str, ranked: list[dict]) -> dict[int, str]:
                 'topic_and_eligibility_evidence': context['topic_and_eligibility_evidence'][:800],
                 'geography_evidence': context['geography_evidence'][:250],
                 'applicant_evidence': context['applicant_evidence'][:340],
+                'funded_activity_evidence': _activity_evidence_excerpt(
+                    row.get('text') or '', query)[:600],
+                'activity_with_broader_population': bool(row.get('_relaxed_subject')),
                 'deadline': row.get('_deadline') or 'постійно',
                 'deadline_note': row.get('_deadline_note') or '',
             })
@@ -1484,7 +1808,14 @@ def ai_classify(query: str, ranked: list[dict]) -> dict[int, str]:
                     continue
                 # Model must never promote a candidate without direct applicant
                 # evidence to 'direct'. It may still be a conditional candidate.
-                if level == 'direct' and not row.get('_applicant_direct_evidence', True):
+                subject = (facets.get('detail') or facets.get('custom_sector')
+                           or query) if facets else query
+                services, beneficiaries = _intent_concepts(subject)
+                positive = _funded_activity_text(row.get('text') or '')
+                target_explicit = (not beneficiaries or all(
+                    _concept_hit(positive, SEARCH_CONCEPTS[k]) for k in beneficiaries))
+                if level == 'direct' and (not row.get('_applicant_direct_evidence', True)
+                                          or (services and not target_explicit)):
                     level_actual = 'conditional'
                 else:
                     level_actual = level
@@ -1791,7 +2122,9 @@ def catalog_card_fields(post_text: str) -> dict[str, str]:
                     or re.search(r'\b(?:дедлайн|deadline)\b', v, re.I)
                     or re.match(r'^(?:https?://|#|офіційн\w*\s+сторінк)', v, re.I)):
                     break
-                if len(v) > 350 or (v.isupper() and len(v) > 27):
+                if (len(v) > 350 or (v.isupper() and len(v) > 27)
+                        or re.fullmatch(r'(?:деталі|детальніше|докладніше|'
+                                        r'більше інформації|посилання)', v, re.I)):
                     break
                 values.append(v)
                 if len(values) >= 3:
@@ -1851,6 +2184,8 @@ def catalog_card_fields(post_text: str) -> dict[str, str]:
         """Never print dangling clauses or duplicated semicolon separators."""
         value = re.sub(r'\s*;+\s*', '; ', str(value)).strip(' ;:,')
         value = re.sub(r';\s*;', ';', value).strip(' ;:')
+        value = re.sub(r'(?:;\s*)?(?:Деталі|Детальніше|Докладніше)\.?$', '', value,
+                       flags=re.I).rstrip(' ;,')
         # Some archive bullets finish with "які", "якщо", etc. There is no
         # safe way to reconstruct a missing requirement: refer to the post.
         if (not value or re.search(r'(?:\b(?:які|який|яка|що|коли|якщо|зокрема|або|та|і|чи|для|на|при|із|з)\b|[,;:])\s*$', value, re.I)
@@ -1864,6 +2199,18 @@ def catalog_card_fields(post_text: str) -> dict[str, str]:
     geo_candidates = take_block('geography')
     geography = next((x for x in geo_candidates if
                       not re.search(r'\b\d{1,2}:\d{2}\b', x)), '')
+    # Broad geographic labels from archival metadata can contradict an
+    # explicitly Ukraine-only applicant restriction in the introduction.
+    # "весь світ" must not be printed for a programme addressed ONLY to
+    # Ukrainian civic organisations/NGOs.
+    intro_scope = ' '.join(plain(x) for x in raw[:9])
+    ua_only_applicants = bool(re.search(
+        r'(?:для|запрошуються|можуть\s+податися)\s+українськ\w*\s+'
+        r'(?:громадськ\w*\s+організаці\w*|організаці\w*|'
+        r'огс|нго|неурядов\w*\s+організаці\w*)', intro_scope, re.I))
+    if ua_only_applicants and geography and re.fullmatch(
+            r'(?:весь|увесь)\s+світ\.?|worldwide|global', geography.strip(), re.I):
+        geography = 'Україна (для українських організацій)'
     if not geography:
         ukrainian = next((plain(x) for x in raw if
             re.search(r'\b(?:Україн\w*\s+(?:мож\w*|допуска\w*|підход\w*)|Україна\s+(?:підход\w*|мож\w*|є\s+асоційован))', x, re.I)
@@ -2646,7 +2993,7 @@ def make_one_catalog(state: dict, rows: list[dict], *, dry_run=False) -> bool:
         # contains ALL relevant archive prefilter hits, without a numeric cap.
         if facets is not None:
             keywords = _menu_plan(facets, query)
-            title = query[:100]
+            title = keywords.get('title', query[:100])
         else:
             title, keywords = ai_expand(query)
         ranked = rank_posts(rows, query, keywords, facets=facets)
