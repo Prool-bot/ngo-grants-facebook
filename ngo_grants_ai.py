@@ -245,9 +245,45 @@ def similarity(a: str, b: str) -> float:
     return max(0.7 * overlap + 0.3 * jaccard, SequenceMatcher(None, " ".join(sorted(aa)), " ".join(sorted(bb))).ratio() * 0.85)
 
 
-def related_existing(query: str, state: dict) -> dict | None:
+def _structured_request_signature(raw: object) -> tuple | None:
+    """Canonical menu identity: all *search-changing* selectors are included.
+
+    An unknown or damaged selector must never match an existing request. Sector
+    order is irrelevant, but applicant category, location, and free-text details
+    always matter. Older, unstructured records deliberately lack a signature.
+    """
+    f = normalized_menu_facets(raw)
+    if f is None:
+        return None
+
+    def clean(value: str) -> str:
+        return ' '.join(unicodedata.normalize('NFKC', value).casefold().split())
+
+    return (f['audience'], tuple(sorted(f['sectors'])),
+            clean(f['custom_sector']), f['geo'], f['region'], clean(f['detail']))
+
+
+def _same_search_request(query: str, facets: dict | None, earlier: dict,
+                         *, legacy_match) -> bool:
+    """Compare two V5 requests by facets, or two old requests by topic.
+
+    A new structured request is never considered equivalent to an old catalog
+    whose intended applicant/sector/location cannot be established.
+    """
+    previous = earlier.get('facets')
+    if facets is not None or previous is not None:
+        if facets is None or previous is None:
+            return False
+        left = _structured_request_signature(facets)
+        right = _structured_request_signature(previous)
+        return left is not None and right is not None and left == right
+    return legacy_match(query, str(earlier.get('topic') or ''))
+
+
+def related_existing(query: str, state: dict, *, facets: dict | None = None) -> dict | None:
     for existing in reversed(state.get("published", [])):
-        if similarity(query, existing.get("topic", "")) >= 0.79:
+        if _same_search_request(query, facets, existing,
+                                legacy_match=lambda a, b: similarity(a, b) >= 0.79):
             # Keep a catalog discoverable while at least one listed deadline
             # may still be open. Individual entries have their own deadlines.
             until = existing.get("valid_until")
@@ -256,8 +292,10 @@ def related_existing(query: str, state: dict) -> dict | None:
     return None
 
 
-def same_in_queue(query: str, state: dict) -> bool:
-    return any(similarity(query, item.get("topic", "")) >= 0.79 for item in state.get("queue", []))
+def same_in_queue(query: str, state: dict, *, facets: dict | None = None) -> bool:
+    return any(_same_search_request(query, facets, item,
+               legacy_match=lambda a, b: similarity(a, b) >= 0.79)
+               for item in state.get("queue", []))
 
 
 def read_archive(root: Path = ARCHIVE) -> list[dict]:
@@ -2222,8 +2260,10 @@ def import_gateway_requests(state: dict) -> None:
         if request_id in seen or request_id in old:
             seen.add(request_id)
             continue
-        if related_existing(topic, state) or same_in_queue(topic, state):
-            # Worker already replied; do not generate a near-duplicate catalog.
+        if (related_existing(topic, state, facets=facets)
+                or same_in_queue(topic, state, facets=facets)):
+            # Legacy comparisons use topic similarity. Menu requests use their
+            # exact normalized applicant, sector, geography and detail filters.
             seen.add(request_id)
             continue
         record = {"id": request_id, "topic": topic, "requested_at": requested_at}
@@ -2276,14 +2316,16 @@ def _no_results_same_topic(first: str, second: str) -> bool:
     return bool(normalize(first)) and normalize(first) == normalize(second)
 
 
-def recent_no_result(state: dict, topic: str, *, now: date | None = None) -> dict | None:
-    """A public or queued zero-result message for exactly this recent topic."""
+def recent_no_result(state: dict, topic: str, *, now: date | None = None,
+                     facets: dict | None = None) -> dict | None:
+    """Return a recent negative outcome only for the same *entire* request."""
     current_day = now or today_kyiv()
     cutoff = (current_day - timedelta(days=NO_RESULTS_REPEAT_DAYS)).isoformat()
     for previous in reversed(state.get('no_results', [])):
         if (previous.get('status') in ('pending', 'published')
                 and cutoff <= str(previous.get('checked_on', '')) <= current_day.isoformat()
-                and _no_results_same_topic(topic, str(previous.get('topic', '')))):
+                and _same_search_request(topic, facets, previous,
+                                         legacy_match=_no_results_same_topic)):
             return previous
     return None
 
@@ -2304,10 +2346,16 @@ def mark_no_results(state: dict, entry: dict, reason: str) -> dict:
         if int(previous.get('id', -1)) == request_id:
             return previous
     topic = sanitize_user_text(str(entry['topic']))
-    prior = recent_no_result(state, topic)
+    raw_facets = entry.get('facets')
+    facets = normalized_menu_facets(raw_facets) if raw_facets is not None else None
+    if raw_facets is not None and facets is None:
+        raise ValueError('Некоректні фільтри запиту: негативний результат не збережено')
+    prior = recent_no_result(state, topic, facets=facets)
     item = {'id': request_id, 'topic': topic, 'reason': reason,
             'checked_on': today_kyiv().isoformat(),
             'status': 'duplicate' if prior is not None else 'pending'}
+    if facets is not None:
+        item['facets'] = facets
     if prior is not None:
         item['duplicate_of'] = int(prior['id'])
         # The original outcome is already public or will be published soon.
@@ -2354,8 +2402,9 @@ def publish_pending_no_results(state: dict, *, now: datetime | None = None) -> b
                         x.get('status') in ('pending', 'published') and
                         x.get('id') != item.get('id') and
                         x.get('checked_on', '') <= item.get('checked_on', '') and
-                        _no_results_same_topic(str(x.get('topic', '')),
-                                               str(item.get('topic', ''))) and
+                        _same_search_request(str(item.get('topic', '')),
+                                             item.get('facets'), x,
+                                             legacy_match=_no_results_same_topic) and
                         (date.fromisoformat(item['checked_on']) -
                          date.fromisoformat(x['checked_on'])).days <= NO_RESULTS_REPEAT_DAYS), None)
         if earlier is not None:
@@ -2402,7 +2451,7 @@ def make_one_catalog(state: dict, rows: list[dict], *, dry_run=False) -> bool:
     if entry.get('facets') is not None and facets is None:
         raise RuntimeError('Невірні фільтри в черзі, публікацію зупинено')
     # Repeated queries do not call AI and do not create a second public post.
-    if recent_no_result(state, query) is not None:
+    if recent_no_result(state, query, facets=facets) is not None:
         mark_no_results(state, entry, 'no_candidate')
         state["queue"].pop(0)
         state.pop("ai_review", None)
@@ -2487,11 +2536,16 @@ def make_one_catalog(state: dict, rows: list[dict], *, dry_run=False) -> bool:
                + order_link_line())
     message_id = upload_pdf(pdf, caption)
     channel_url = f"https://t.me/{CHANNEL}/{message_id}"
-    state["published"].append({"id": entry["id"], "topic": query, "title": title,
-                               "channel_url": channel_url, "pdf": str(pdf),
-                               "post_ids": [r["id"] for r in picked],
-                               "published_on": now.astimezone(KYIV).date().isoformat(),
-                               "valid_until": max(r["_deadline"] for r in picked)})
+    published_entry = {"id": entry["id"], "topic": query, "title": title,
+                       "channel_url": channel_url, "pdf": str(pdf),
+                       "post_ids": [r["id"] for r in picked],
+                       "published_on": now.astimezone(KYIV).date().isoformat(),
+                       "valid_until": max(r["_deadline"] for r in picked)}
+    if facets is not None:
+        # Preserve menu identity for future deduplication. Pre-menu catalogs
+        # remain legacy records with no facets (we do not guess their filters).
+        published_entry['facets'] = facets
+    state["published"].append(published_entry)
     state["last_post_at"] = now.isoformat()
     state["queue"].pop(0)
     state.pop("ai_review", None)
