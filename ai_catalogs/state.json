@@ -1,11 +1,7 @@
 {
   "schema_version": 1,
   "last_update_id": 272838698,
-  "users_days": {
-    "4fe9fc9af08945c45f1e1456c04f74": "2026-10-16",
-    "6f074abb4977478f7f244ee5728e52": "2026-10-16",
-    "ec61aa3a0c9bd9ff9dc0ff615b5a60": "2026-10-16"
-  },
+  "users_days": {},
   "queue": [],
   "published": [
     {
