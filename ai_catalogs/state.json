@@ -2,25 +2,7 @@
   "schema_version": 1,
   "last_update_id": 272838698,
   "users_days": {},
-  "queue": [
-    {
-      "id": 272838877,
-      "topic": "Встановлення оранжереї, пасіки; для некомерційних організацій; сфери: Сільське господарство; у Дніпропетровській області",
-      "requested_at": "2026-10-20T02:01:28.834Z",
-      "facets": {
-        "audience": "nonprofit",
-        "sectors": [
-          "agriculture"
-        ],
-        "custom_sector": "",
-        "geo": "region",
-        "region": "dnipro",
-        "detail": "Встановлення оранжереї, пасіки"
-      },
-      "retries": 1,
-      "next_retry_at": "2026-10-20T03:30:51.149467+00:00"
-    }
-  ],
+  "queue": [],
   "published": [
     {
       "id": 272838672,
@@ -712,6 +694,26 @@
       },
       "published_on": "2026-10-18",
       "channel_url": "https://t.me/ngo_grants/3322"
+    },
+    {
+      "id": 272838877,
+      "topic": "Встановлення оранжереї, пасіки; для некомерційних організацій; сфери: Сільське господарство; у Дніпропетровській області",
+      "reason": "no_candidate",
+      "engine_version": 6,
+      "checked_on": "2026-10-20",
+      "status": "published",
+      "facets": {
+        "audience": "nonprofit",
+        "sectors": [
+          "agriculture"
+        ],
+        "custom_sector": "",
+        "geo": "region",
+        "region": "dnipro",
+        "detail": "Встановлення оранжереї, пасіки"
+      },
+      "published_on": "2026-10-20",
+      "channel_url": "https://t.me/ngo_grants/3355"
     }
   ]
 }
