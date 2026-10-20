@@ -16,7 +16,9 @@
         "geo": "region",
         "region": "dnipro",
         "detail": "Встановлення оранжереї, пасіки"
-      }
+      },
+      "retries": 1,
+      "next_retry_at": "2026-10-20T03:30:51.149467+00:00"
     }
   ],
   "published": [
