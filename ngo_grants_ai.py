@@ -103,7 +103,7 @@ MIN_GAP_HOURS = 2
 # Review every candidate over successive scheduled runs to preserve free AI credits.
 AI_REVIEW_BATCH_SIZE = 12
 AI_REVIEW_BATCHES_PER_RUN = 3
-SEARCH_ENGINE_VERSION = 7  # NGO Grants AI v5.6: concept and regional-exclusion filters
+SEARCH_ENGINE_VERSION = 8  # NGO Grants AI v5.6.1: reliable AI JSON and safe intent fallback
 # Public status messages are independent of the 3-PDF/day quota.
 MAX_NO_RESULTS_PER_DAY = 3
 NO_RESULTS_REPEAT_DAYS = 7
@@ -752,13 +752,11 @@ def strict_topic_match(query: str, post_text: str) -> bool:
     # Multi-facet requests must not turn into generic grants for one facet.
     # This also covers the currently queued "гранти для бджолярів - жінок".
     q = unicodedata.normalize('NFKC', query).casefold()
-    if any(t in q for t in ('бджол', 'пасіч', 'пасік', 'beekee', 'apiary')):
-        if not (any(t in source for t in ('бджол', 'пасіч', 'пасік', 'beekee', 'apiary', 'apiculture')) or
-                (any(t in q for t in ('оранжере', 'теплиц', 'парник', 'greenhouse')) and
-                 any(t in source for t in ('оранжере', 'теплиц', 'парник', 'greenhouse')))):
-            return False
-        # A sector-specific call open to *all* beekeepers is still relevant
-        # to women; do not require an explicit "women" keyword in the post.
+    if _v56_needs_topic_gate(query) and not _v56_topic_match(post_text, query):
+        # Multiple independent activities are alternatives (OR); a call may
+        # support ethnotourism, beekeeping OR a greenhouse, not all of them.
+        # Do not infer eligibility from a donor name, link or exclusion block.
+        return False
     if software_request(query):
         # A passing mention in footnotes, eligibility or generic hashtags is
         # insufficient. Software development must be visible in the proposal's
@@ -1189,7 +1187,10 @@ def _v56_topic_match(post: str, query: str) -> bool:
     greenhouse = any(x in subject for x in (
         'оранжере', 'теплиц', 'парник', 'greenhouse'))
     bees = any(x in subject for x in (
-        'пасік', 'пасіч', 'бджіл', 'бджоляр', 'apiary', 'beekeep'))
+        'пасік', 'пасіч', 'бджіл', 'бджол', 'apiary', 'beekeep'))
+    ethnorural = ('етнотур' in subject or 'етно туриз' in subject or
+                 ('сільськ' in subject and 'туриз' in subject) or
+                 'rural tourism' in subject or 'ethnotourism' in subject)
     capacity = (('інституц' in subject and 'розвит' in subject) or
                 ('організаційн' in subject and 'розвит' in subject))
     if capacity:
@@ -1200,13 +1201,18 @@ def _v56_topic_match(post: str, query: str) -> bool:
             'внутрішн політик', 'capacity build', 'capacity develop',
             'organizational develop', 'strategic planning',
             'розвиток го', 'менторськ'))
-    if greenhouse or bees:
+    if greenhouse or bees or ethnorural:
         green_hit = any(x in focus for x in (
             'оранжере', 'теплиц', 'парник', 'greenhouse'))
         bees_hit = any(x in focus for x in (
             'пасік', 'пасіч', 'бджільниц', 'бджоляр',
             'apiary', 'beekeep', 'apicultur'))
-        return (greenhouse and green_hit) or (bees and bees_hit)
+        ethno_hit = any(x in focus for x in (
+            'етнотур', 'етно туриз', 'сільський туризм',
+            'сільського туризму', 'rural tourism', 'ethnotourism',
+            'етнографічн туризм', 'агротуризм', 'agritourism'))
+        return ((greenhouse and green_hit) or (bees and bees_hit)
+                or (ethnorural and ethno_hit))
     return False
 
 
@@ -1220,7 +1226,9 @@ def _v56_needs_topic_gate(query: str) -> bool:
     subject = _query_subject_text(query)
     return (any(x in subject for x in (
         'оранжере', 'теплиц', 'парник', 'greenhouse',
-        'пасік', 'пасіч', 'бджіл', 'бджоляр', 'apiary', 'beekeep'))
+        'пасік', 'пасіч', 'бджіл', 'бджол', 'apiary', 'beekeep',
+        'етнотур', 'етно туриз', 'ethnotourism', 'rural tourism'))
+        or ('сільськ' in subject and 'туриз' in subject)
         or ('інституц' in subject and 'розвит' in subject)
         or ('організаційн' in subject and 'розвит' in subject))
 
@@ -2160,7 +2168,39 @@ def extract_labels(text: str) -> dict[str, str]:
 
 
 
-def cf_ai(system: str, payload: object, max_tokens: int = 650) -> dict:
+class AIResponseFormatError(RuntimeError):
+    """Malformed model output (safe to replace with a deterministic search plan)."""
+
+
+def _parse_ai_json(answer: object, required_keys: tuple[str, ...] = ()) -> dict:
+    """Decode complete JSON objects without greedy brace matching.
+
+    Models sometimes prepend prose, surround JSON with Markdown fences, or
+    insert trailing commas. Never manufacture a missing closing bracket:
+    truncated content instead triggers the safe no-extra-AI fallback.
+    """
+    if isinstance(answer, dict):
+        if all(key in answer for key in required_keys):
+            return answer
+        raise AIResponseFormatError('Cloudflare AI: JSON без обов’язкових полів')
+    if not isinstance(answer, str) or not answer.strip():
+        raise AIResponseFormatError('Cloudflare AI повернув порожню або невідому відповідь')
+    raw = answer.strip().lstrip('\ufeff')[:16000]
+    decoder = json.JSONDecoder()
+    # At most two local parsing passes. No more network requests or tokens.
+    for candidate in (raw, re.sub(r',\s*(?=[}\]])', '', raw)):
+        for match in re.finditer(r'\{', candidate):
+            try:
+                decoded, _end = decoder.raw_decode(candidate, match.start())
+            except (ValueError, TypeError):
+                continue
+            if isinstance(decoded, dict) and all(key in decoded for key in required_keys):
+                return decoded
+    raise AIResponseFormatError('Cloudflare AI повернув неповний або некоректний JSON')
+
+
+def cf_ai(system: str, payload: object, max_tokens: int = 650,
+          required_keys: tuple[str, ...] = ()) -> dict:
     account = os.environ.get("CF_ACCOUNT_ID", "").strip()
     token = os.environ.get("CF_API_TOKEN", "").strip()
     if not (account and token):
@@ -2170,19 +2210,10 @@ def cf_ai(system: str, payload: object, max_tokens: int = 650) -> dict:
                          {"role": "user", "content": json.dumps(payload, ensure_ascii=False)}],
             "max_tokens": max_tokens, "temperature": 0.0}
     res = http_json(url, data=data, headers={"Authorization": "Bearer " + token}, timeout=35)
-    answer = res.get("result", {}).get("response", "")
-    # An LLM may wrap strict JSON in a fenced code block.
-    m = re.search(r"\{.*\}", answer, flags=re.S)
-    if not m:
-        raise RuntimeError("Cloudflare AI повернув відповідь без JSON")
-    try:
-        return json.loads(m.group(0))
-    except ValueError as ex:
-        raise RuntimeError("Cloudflare AI повернув некоректний JSON") from ex
-
-
-
-
+    result = res.get('result') or {}
+    if not isinstance(result, dict):
+        raise AIResponseFormatError('Cloudflare AI повернув відповідь невідомого формату')
+    return _parse_ai_json(result.get('response'), required_keys=required_keys)
 
 
 
@@ -2217,7 +2248,17 @@ def ai_expand(query: str) -> tuple[str, dict]:
         "[\"друга незалежна тема, якщо є\"]],"
         "\"subject_terms\":[\"вузький синонім\",\"ще один\"]}."
     )
-    result = cf_ai(system, {'topic': query}, max_tokens=650)
+    try:
+        result = cf_ai(system, {'topic': query}, max_tokens=650,
+                       required_keys=('title', 'subject', 'topic_groups'))
+    except AIResponseFormatError:
+        # No additional Cloudflare call. Keep all original user-imposed topics,
+        # applicant and region; exact evidence is still checked in the archive.
+        print('Cloudflare AI: некоректний JSON аналізу запиту. '
+              'Застосовано резервний пошуковий план без додаткових токенів.')
+        result = {'title': query[:100], 'subject': query, 'activity': query,
+                  'applicant': 'Не зазначено', 'requirements': [],
+                  'topic_groups': [], 'subject_terms': []}
     plan = _semantic_plan(query, result)
     return plan['title'], plan
 
@@ -2413,7 +2454,8 @@ def ai_classify(query: str, ranked: list[dict]) -> dict[int, str]:
                     'region_root','applicant_required','audience','regional_focus','facets')}
                   if isinstance(plan, dict) else {'original_query': query})
         result = cf_ai(system, {'query': query, 'intent': intent,
-                               'candidates': candidates}, max_tokens=700)
+                               'candidates': candidates}, max_tokens=700,
+                       required_keys=('direct_ids', 'conditional_ids'))
         direct_ids = result.get('direct_ids')
         conditional_ids = result.get('conditional_ids')
         if not isinstance(direct_ids, list) or not isinstance(conditional_ids, list):
@@ -3920,7 +3962,17 @@ def make_one_catalog(state: dict, rows: list[dict], *, dry_run=False) -> bool:
         return False
     entry = state["queue"][0]
     if entry.get("next_retry_at") and datetime.fromisoformat(entry["next_retry_at"]) > now:
-        return False
+        # A search-engine fix may clear an old backoff ONCE, without another
+        # subscriber order. The per-order version stamp survives failed runs.
+        # Subsequent errors return to ordinary 1h/6h/24h quota protection.
+        if (int(entry.get('retries', 0)) >= 2 and
+                entry.get('retry_engine_version') != SEARCH_ENGINE_VERSION):
+            entry['retry_engine_version'] = SEARCH_ENGINE_VERSION
+            save_state(state)
+            print('Оновлено пошуковий механізм: один контрольний запуск '
+                  'відкладеного замовлення без повторного запиту підписника.')
+        else:
+            return False
     query = normalize_search_query(entry["topic"])
     facets = normalized_menu_facets(entry.get('facets')) if entry.get('facets') is not None else None
     if entry.get('facets') is not None and facets is None:
