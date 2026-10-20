@@ -103,7 +103,7 @@ MIN_GAP_HOURS = 2
 # Review every candidate over successive scheduled runs to preserve free AI credits.
 AI_REVIEW_BATCH_SIZE = 12
 AI_REVIEW_BATCHES_PER_RUN = 3
-SEARCH_ENGINE_VERSION = 8  # NGO Grants AI v5.6.1: reliable AI JSON and safe intent fallback
+SEARCH_ENGINE_VERSION = 9  # NGO Grants AI v5.6.2: faithful titles and funded-activity verification
 # Public status messages are independent of the 3-PDF/day quota.
 MAX_NO_RESULTS_PER_DAY = 3
 NO_RESULTS_REPEAT_DAYS = 7
@@ -1177,9 +1177,47 @@ def _context_section(text: str, headings: tuple[str,...], limit: int = 520) -> s
 
 
 # NGO Grants AI v5.6 — concept matching is bounded by funded activities.
+# A topic term in the applicant/sector list is not evidence that the
+# requested PROJECT is fundable (e.g. REMARKET funds new jobs, not apiaries).
+def _v562_fundable_scope(post: str) -> str:
+    positive = _funded_activity_text(post)
+    lines = []
+    allowed = True
+    excluded = re.compile(
+        r'^(?:хто\s+може|хто\s+пода|для\s+кого|заявники|заявник|'
+        r'учасники|учасник|eligibility|who\s+can\s+apply|'
+        r'географія|країни\s+участі|дедлайн|кінцевий\s+термін|'
+        r'умови\s+участі|вимоги\s+до\s+заявник)', re.I)
+    positive_headers = re.compile(
+        r'^(?:що\s+підтриму|що\s+фінансу|напрями\s+підтримки|'
+        r'мета\s+(?:програми|проєкту)|деталі|опис\s+проєкту|'
+        r'пріоритетні\s+напрями|supported\s+activities|'
+        r'eligible\s+activities|funded\s+projects)', re.I)
+    sector_headers = re.compile(
+        r'^(?:галузі|основні\s+сектори|сектори\s+економіки|'
+        r'профіль\s+заявників|вимоги\s+до\s+учасників)', re.I)
+    for line in positive.splitlines():
+        stripped = re.sub(r'^[^a-zа-яіїєґ0-9]+', '', line.casefold()).strip()
+        if not stripped:
+            continue
+        if excluded.match(stripped):
+            allowed = False
+            continue
+        if positive_headers.match(stripped):
+            allowed = True
+        if sector_headers.match(stripped):
+            continue
+        # Once the eligibility section begins, do not use its sector list as
+        # proof of supported project activities. A later explicit scope header
+        # reopens the positive funding section.
+        if allowed:
+            lines.append(line)
+    return '\n'.join(lines)
+
+
 def _v56_topic_match(post: str, query: str) -> bool:
     subject = _query_subject_text(query)
-    positive = _funded_activity_text(post)
+    positive = _v562_fundable_scope(post)
     focus = '\n'.join(positive.splitlines()[:12]) + '\n' + _context_section(
         positive, ('що підтрим', 'що фінансу', 'напрям',
                    'мета програм', 'тематика', 'activities',
@@ -1748,6 +1786,63 @@ def _menu_eligible(post: str, facets: dict) -> bool:
 
 
 
+def _catalog_short_subject(detail: str) -> str:
+    """Human-readable topic label: no midword cuts or instruction fragments.
+
+    In a multi-activity query, semicolons separate funded activities; a slash
+    commonly lists alternative labels for the SAME activity. Preserve the
+    complete request in the accompanying scope, not in a cut-off heading.
+    """
+    cleaned = re.sub(r'\s+', ' ', str(detail or '')).strip()
+    cleaned = re.sub(r'(?i)\bкожен\s+напрям\s+розглядати\s+окремо\.?', '', cleaned)
+    pieces = []
+    for segment in cleaned.split(';'):
+        part = segment.strip(' .;—–,')
+        if not part:
+            continue
+        # A slash with padding is an alternative naming, not a new grant area.
+        part = re.split(r'\s+/\s+', part, maxsplit=1)[0].strip()
+        if part:
+            pieces.append(part)
+    if len(pieces) > 1:
+        return ', '.join(pieces[:-1]) + ' та ' + pieces[-1]
+    return pieces[0] if pieces else 'Тематичні грантові можливості'
+
+
+def _catalog_facet_geography(facets: dict | None) -> str:
+    if not facets:
+        return ''
+    if facets.get('geo') == 'region':
+        return MENU_REGION_LABELS.get(facets.get('region'), '')
+    return {'ukraine': 'Україна', 'international': 'Міжнародні можливості',
+            'all': 'Без географічних обмежень'}.get(facets.get('geo'), '')
+
+
+def _catalog_caption(title: str, query: str, facets: dict | None,
+                     total: int, direct: int, conditional: int) -> str:
+    detail = str(facets.get('detail') or query) if facets else query
+    audience = MENU_AUDIENCE_LABELS.get(facets.get('audience'), '') if facets else ''
+    geography = _catalog_facet_geography(facets)
+    items = [f'📚 {title}', '',
+             '🤖 Добірку підготовлено з дописів @ngo_grants.',
+             f'📌 Запит: {detail}']
+    if audience:
+        items.append('👥 Заявник: ' + audience)
+    if geography:
+        items.append('🌍 Географія: ' + geography)
+    items.extend([f'📄 Можливостей: {total} (прямі: {direct}; умовні: {conditional}).',
+                  '🔗 У PDF — посилання на оригінальні дописи.',
+                  '⚠️ Умовна відповідність не гарантує права подання. '
+                  'Перевіряйте актуальні правила й дедлайни.',
+                  '', order_link_line()])
+    caption = '\n'.join(items).strip()
+    if len(caption) > 1000:
+        # Telegram sendDocument allows up to 1024 caption characters; fail
+        # explicitly rather than silently publishing a mutilated user query.
+        raise ValueError('Текст підпису до каталогу перевищує ліміт Telegram')
+    return caption
+
+
 def _menu_plan(facets: dict, query: str) -> dict:
     # For menu requests with a concrete detail, run the existing semantic AI
     # *only on that detail*; applicant, sector and geography are hard filters.
@@ -1769,10 +1864,15 @@ def _menu_plan(facets: dict, query: str) -> dict:
     plan['facets']=facets
     # Keep the COVER meaningful. Menu metadata must not consume title space
     # and must never end mid-word (previously: "сфери: Соціальна т").
-    focus = detail or (', '.join(sectors) if sectors else 'Грантові можливості')
+    focus = (_catalog_short_subject(detail) if detail else
+             (', '.join(sectors) if sectors else 'Грантові можливості'))
     geo_name = where[facets['geo']]
-    plan['title'] = sanitize_user_text(
-        focus + (' — ' + geo_name if geo_name not in ('усі регіони',) else ''))[:110]
+    full_title = sanitize_user_text(
+        focus + (' — ' + geo_name if geo_name not in ('усі регіони',) else ''))
+    # Only a compact *heading* may be abbreviated; the complete query appears
+    # separately in the PDF and Telegram caption. Never slice midword.
+    plan['title'] = (_catalog_ellipsis(full_title, 140)
+                     if len(full_title) > 140 else full_title)
     plan['applicant']=applicant_label
     plan['activity']=facets.get('detail') or topic_label
     plan['subject']=facets.get('detail') or topic_label
@@ -2024,6 +2124,8 @@ def rank_posts(rows: list[dict], query: str, keywords: list[str] | dict,
             continue
         narrow = (facets.get('detail') or facets.get('custom_sector') or '') if facets else query
         if narrow and not strict_topic_match(narrow, content):
+            continue
+        if _v56_needs_topic_gate(narrow) and not _v56_topic_match(content, narrow):
             continue
         if facets is None and re.search(
                 r'\b(?:міжнародн\w*|з\s+усього\s+світу|worldwide|international)\b',
@@ -2474,6 +2576,9 @@ def ai_classify(query: str, ranked: list[dict]) -> dict[int, str]:
                 specific = facets.get('detail') or facets.get('custom_sector') or '' if facets else query
                 if not strict_topic_match(specific, row.get('text') or ''):
                     continue
+                if (_v56_needs_topic_gate(specific) and
+                        not _v56_topic_match(row.get('text') or '', specific)):
+                    continue
                 # Model must never promote a candidate without direct applicant
                 # evidence to 'direct'. It may still be a conditional candidate.
                 subject = (facets.get('detail') or facets.get('custom_sector')
@@ -2796,7 +2901,9 @@ def upload_pdf(file: Path, caption: str) -> int:
     boundary = "----ngo-grants-ai-pdf" + hashlib.sha256(file.name.encode()).hexdigest()[:16]
     def field(key, value):
         return (f"--{boundary}\r\nContent-Disposition: form-data; name=\"{key}\"\r\n\r\n{value}\r\n").encode("utf-8")
-    blob = b"".join([field("chat_id", "@" + CHANNEL), field("caption", caption[:1000]),
+    if len(caption) > 1000:
+        raise ValueError("Занадто довгий підпис PDF для Telegram")
+    blob = b"".join([field("chat_id", "@" + CHANNEL), field("caption", caption),
                      field("disable_notification", "false"),
                      f"--{boundary}\r\nContent-Disposition: form-data; name=\"document\"; filename=\"{file.name}\"\r\nContent-Type: application/pdf\r\n\r\n".encode(),
                      file.read_bytes(), b"\r\n", f"--{boundary}--\r\n".encode()])
@@ -3067,7 +3174,8 @@ def _catalog_ellipsis(s: str, max_chars: int) -> str:
 
 
 
-def pdf_catalog(path: Path, title: str, topic: str, rows: list[dict], stamp: date) -> None:
+def pdf_catalog(path: Path, title: str, topic: str, rows: list[dict], stamp: date,
+                facets: dict | None = None) -> None:
     """Branded A4 PDF: cover + separate 2-column detail cards (max 2 per page).
 
 
@@ -3404,10 +3512,36 @@ def pdf_catalog(path: Path, title: str, topic: str, rows: list[dict], stamp: dat
     draw_text('NGO GRANTS', 22*mm, H-52*mm, 12, bold, WHITE)
     draw_text('ТЕМАТИЧНИЙ КАТАЛОГ  /  ПІДГОТОВЛЕНО З АРХІВУ КАНАЛУ',
               22*mm, H-63*mm, 8.5, font, colors.HexColor('#B8E0EC'))
-    cover_title = _catalog_ellipsis(title, 130)
-    ch = pdraw(cover_title, 22*mm, H-85*mm, W-44*mm, 21.6, 30.5, bold, WHITE)
-    pdraw('Запит підписника: '+_catalog_ellipsis(topic, 100), 22*mm,
-          H-85*mm-ch-18, W-44*mm, 10.2, 16, font, WHITE)
+    # The request is data, not a fragment of the cover heading. Never trim
+    # user clauses with [:N]. Fit both full topic and scope with measured fonts.
+    scope_detail = str(facets.get('detail') or topic) if facets else topic
+    scope_applicant = MENU_AUDIENCE_LABELS.get(facets.get('audience'), '') if facets else ''
+    scope_region = _catalog_facet_geography(facets)
+    cover_subject = 'Запит підписника: ' + scope_detail
+    cover_meta = ' • '.join(x for x in (scope_applicant, scope_region) if x)
+    intro_top = H-85*mm
+    cover_width = W-44*mm
+    subtitle_size, subtitle_leading = 9.5, 14.0
+    for heading_size, heading_leading in ((21.0,29.0), (19.2,26.0),
+                                          (17.5,24.0), (16.0,22.0), (14.5,20.0)):
+        heading_h = measure(title, cover_width, heading_size, heading_leading, bold)
+        subtitle_h = measure(cover_subject, cover_width, subtitle_size, subtitle_leading)
+        scope_h = measure(cover_meta, cover_width, 9.0, 12.5) if cover_meta else 0
+        if heading_h+subtitle_h+scope_h+25 <= 68*mm:
+            break
+    else:
+        # Extremely detailed long topics receive an orderly, short generic
+        # heading; the exact complete request remains visible below it.
+        heading_size, heading_leading = 16.0, 22.0
+        title = 'Тематичний каталог грантових можливостей'
+    ch = pdraw(title, 22*mm, intro_top, cover_width,
+               heading_size, heading_leading, bold, WHITE)
+    detail_top = intro_top-ch-12
+    dh = pdraw(cover_subject, 22*mm, detail_top, cover_width,
+               subtitle_size, subtitle_leading, font, WHITE)
+    if cover_meta:
+        pdraw(cover_meta, 22*mm, detail_top-dh-8,
+              cover_width, 9.0, 12.5, font, WHITE)
     bx=22*mm; by=H-210*mm; bw=W-44*mm; bh=54*mm
     c.setFillColor(DEEP_BLUE)
     c.roundRect(bx, by, bw, bh, 12, fill=1, stroke=0)
@@ -4068,19 +4202,15 @@ def make_one_catalog(state: dict, rows: list[dict], *, dry_run=False) -> bool:
         return True
     slug = f"ngo_grants_{now.astimezone(KYIV).strftime('%Y%m%d')}_{entry['id']}"
     pdf = PDF_DIR / (slug + ".pdf")
-    pdf_catalog(pdf, title, query, picked, now.astimezone(KYIV).date())
+    pdf_catalog(pdf, title, query, picked, now.astimezone(KYIV).date(),
+                facets=facets)
     if dry_run:
         print("Пробний PDF:", pdf, "дописів:", len(picked))
         return False
     direct_count = sum(row.get("_relevance") == "direct" for row in picked)
     indirect_count = len(picked) - direct_count
-    caption = (f"📚 {title[:140]}\n\n🤖 Підготовлено за запитом підписника на основі дописів @ngo_grants.\n"
-               f"📌 Тема: {query[:190]}\n📄 Можливостей: {len(picked)} "
-               f"(прямі: {direct_count}; умовні: {indirect_count}).\n"
-               "🔗 У PDF активні посилання ведуть до публікацій каналу.\n"
-               "⚠️ Умовні можливості не підтверджують прямого права заявника. "
-               "Дедлайни взято з дописів; перед поданням перевірте першоджерело.\n\n"
-               + order_link_line())
+    caption = _catalog_caption(title, query, facets, len(picked),
+                               direct_count, indirect_count)
     message_id = upload_pdf(pdf, caption)
     channel_url = f"https://t.me/{CHANNEL}/{message_id}"
     published_entry = {"id": entry["id"], "topic": query, "title": title,
