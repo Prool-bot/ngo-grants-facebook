@@ -1,11 +1,15 @@
 ﻿"""NGO Grants topical PDF catalogs built ONLY from archived @ngo_grants posts.
 
 
+
+
 No web discovery. AI is optional for local search expansion, but mandatory for auto-publish.
 Telegram Bot API is used for incoming user requests and public channel publication.
 No direct PDF messages to users; users receive status and channel links only.
 """
 from __future__ import annotations
+
+
 
 
 import argparse
@@ -29,6 +33,8 @@ import urllib.request
 from zoneinfo import ZoneInfo
 
 
+
+
 CHANNEL = "ngo_grants"
 # The legacy hard-coded handle was not validated against the active bot.
 # Never put an unverified username into a public Telegram post or PDF.
@@ -38,11 +44,19 @@ VERIFIED_BOT_USERNAME: str | None = None
 
 
 
+
+
+
+
 def verified_order_url() -> str | None:
     """Only a username confirmed by Telegram getMe may become a public link."""
     if VERIFIED_BOT_USERNAME and re.fullmatch(r"[A-Za-z][A-Za-z0-9_]{4,31}", VERIFIED_BOT_USERNAME):
         return f"https://t.me/{VERIFIED_BOT_USERNAME}"
     return None
+
+
+
+
 
 
 
@@ -67,9 +81,15 @@ def refresh_bot_identity() -> None:
 
 
 
+
+
+
+
 def order_link_line() -> str:
     link = verified_order_url()
     return f'🤖 Замовити добірку: {link}' if link else ''
+
+
 
 
 KYIV = ZoneInfo("Europe/Kyiv")
@@ -88,6 +108,8 @@ SEARCH_ENGINE_VERSION = 7  # NGO Grants AI v5.6: concept and regional-exclusion 
 MAX_NO_RESULTS_PER_DAY = 3
 NO_RESULTS_REPEAT_DAYS = 7
 NO_RESULTS_HISTORY_DAYS = 45
+
+
 
 
 # Search expansions are transparent and checked only against the Telegram archive.
@@ -115,8 +137,16 @@ EN_MONTHS = {"january": 1, "february": 2, "march": 3, "april": 4, "may": 5, "jun
 
 
 
+
+
+
+
 def today_kyiv() -> date:
     return datetime.now(KYIV).date()
+
+
+
+
 
 
 
@@ -128,6 +158,10 @@ def sanitize_user_text(raw: str) -> str:
     raw = re.sub(r"(?<!\w)@[A-Za-z][A-Za-z0-9_]{4,31}\b", "[ім’я]", raw)
     raw = re.sub(r"(?<!\w)\+?\d[\d ()-]{7,}\d(?!\w)", "[телефон]", raw)
     return " ".join(raw.split())[:300]
+
+
+
+
 
 
 
@@ -144,11 +178,19 @@ KNOWN_QUERY_TYPOS = (
 
 
 
+
+
+
+
 def normalize_search_query(query: str) -> str:
     result = sanitize_user_text(query)
     for pattern, replacement in KNOWN_QUERY_TYPOS:
         result = re.sub(pattern, replacement, result, flags=re.I)
     return result
+
+
+
+
 
 
 
@@ -173,6 +215,10 @@ def requested_audience(query: str) -> str:
                  r'\b(?:для|від)\s+самозайнят\w*', q):
         return 'individual'
     return 'any'
+
+
+
+
 
 
 
@@ -218,6 +264,10 @@ def applicant_category_eligible(post: str, audience: str) -> bool:
 
 
 
+
+
+
+
 def _regional_focus_query(query: str) -> bool:
     """Geographic-only requests want LOCAL/NATIONAL grants, not global art prizes."""
     if not _query_region(query):
@@ -225,6 +275,10 @@ def _regional_focus_query(query: str) -> bool:
     q = re.sub(r'[а-яіїєґ-]{5,}\s+(?:област[іьяю]|обл\.)', '', query.casefold())
     return not any(t for t in _specific_terms(q) if not t.startswith(
             ('грант', 'можлив', 'програм', 'розви', 'фінанс', 'проєкт', 'проект')))
+
+
+
+
 
 
 
@@ -252,6 +306,10 @@ def _regional_focused_eligible(post: str, region_root: str) -> bool:
 
 
 
+
+
+
+
 def words(s: str) -> list[str]:
     s = unicodedata.normalize("NFKC", s).lower().replace("’", "'")
     return re.findall(r"[a-zа-яіїєґ0-9]{3,}", s)
@@ -259,8 +317,16 @@ def words(s: str) -> list[str]:
 
 
 
+
+
+
+
 def theme_tokens(s: str) -> set[str]:
     return {w for w in words(s) if w not in STOP}
+
+
+
+
 
 
 
@@ -280,6 +346,10 @@ def variants(s: str, extras: list[str] | None = None) -> list[str]:
 
 
 
+
+
+
+
 def similarity(a: str, b: str) -> float:
     aa, bb = set(variants(a)), set(variants(b))
     if not aa or not bb:
@@ -292,8 +362,14 @@ def similarity(a: str, b: str) -> float:
 
 
 
+
+
+
+
 def _structured_request_signature(raw: object) -> tuple | None:
     """Canonical menu identity: all *search-changing* selectors are included.
+
+
 
 
     An unknown or damaged selector must never match an existing request. Sector
@@ -305,8 +381,12 @@ def _structured_request_signature(raw: object) -> tuple | None:
         return None
 
 
+
+
     def clean(value: str) -> str:
         return ' '.join(unicodedata.normalize('NFKC', value).casefold().split())
+
+
 
 
     return (f['audience'], tuple(sorted(f['sectors'])),
@@ -315,9 +395,15 @@ def _structured_request_signature(raw: object) -> tuple | None:
 
 
 
+
+
+
+
 def _same_search_request(query: str, facets: dict | None, earlier: dict,
                          *, legacy_match) -> bool:
     """Compare two V5 requests by facets, or two old requests by topic.
+
+
 
 
     A new structured request is never considered equivalent to an old catalog
@@ -331,6 +417,10 @@ def _same_search_request(query: str, facets: dict | None, earlier: dict,
         right = _structured_request_signature(previous)
         return left is not None and right is not None and left == right
     return legacy_match(query, str(earlier.get('topic') or ''))
+
+
+
+
 
 
 
@@ -349,10 +439,18 @@ def related_existing(query: str, state: dict, *, facets: dict | None = None) -> 
 
 
 
+
+
+
+
 def same_in_queue(query: str, state: dict, *, facets: dict | None = None) -> bool:
     return any(_same_search_request(query, facets, item,
                legacy_match=lambda a, b: similarity(a, b) >= 0.79)
                for item in state.get("queue", []))
+
+
+
+
 
 
 
@@ -375,6 +473,10 @@ def read_archive(root: Path = ARCHIVE) -> list[dict]:
 
 
 
+
+
+
+
 def _parse_day(d: str, m: str, y: str) -> date | None:
     try:
         yy = int(y)
@@ -387,10 +489,18 @@ def _parse_day(d: str, m: str, y: str) -> date | None:
 
 
 
+
+
+
+
 DEADLINE_CONTEXT = re.compile(
     r"(?:дедлайни?|кінцев(?:ий|а)\s+термін|прийом\s+заяв(?:ок|ок)|"
     r"пода(?:ча|ння)\s+заяв(?:ок|ок)|deadline|apply\s+by|submit\s+by|"
     r"applications?\s+close)[^\n]{0,220}", re.I)
+
+
+
+
 
 
 
@@ -431,8 +541,14 @@ def deadline_dates_from_post(text: str) -> list[date]:
 
 
 
+
+
+
+
 def deadline_from_post(text: str, now: date | None = None) -> date | None:
     """Next dated round; when none remain, return the latest expired deadline.
+
+
 
 
     Later-round eligibility MUST be checked separately; a future deadline does
@@ -448,8 +564,14 @@ def deadline_from_post(text: str, now: date | None = None) -> date | None:
 
 
 
+
+
+
+
 def application_window_starts_from_post(text: str) -> date | None:
     """Read start of a dated *submission* window without treating it as deadline.
+
+
 
 
     The end of the window is handled by deadline_dates_from_post().
@@ -466,6 +588,10 @@ def application_window_starts_from_post(text: str) -> date | None:
             if start and finish and start <= finish:
                 return start
     return None
+
+
+
+
 
 
 
@@ -491,6 +617,10 @@ def ongoing_applications_from_post(text: str) -> bool:
 
 
 
+
+
+
+
 # Conservative relevance gates. They use ONLY archived post text, never a live website.
 # Specialized requests must not turn into generic sector-wide catalogs.
 DOCUMENTARY_TERMS = (
@@ -506,9 +636,17 @@ FILM_TERMS = (
 
 
 
+
+
+
+
 def documentary_request(query: str) -> bool:
     query = unicodedata.normalize("NFKC", query).casefold()
     return any(term in query for term in ("документаль", "докфільм", "доккіно", "documentary", "documentaries"))
+
+
+
+
 
 
 
@@ -520,8 +658,14 @@ def film_request(query: str) -> bool:
 
 
 
+
+
+
+
 def explicitly_excludes_documentary(post_text: str) -> bool:
     """Do not confuse a listed *exclusion* with a supported film genre.
+
+
 
 
     Scan explicit non-fundable sections of an archived announcement. The
@@ -565,6 +709,10 @@ def explicitly_excludes_documentary(post_text: str) -> bool:
 
 
 
+
+
+
+
 def software_request(query: str) -> bool:
     """Only the explicit *development of software* family needs this gate."""
     q = unicodedata.normalize('NFKC', query).casefold()
@@ -575,8 +723,14 @@ def software_request(query: str) -> bool:
 
 
 
+
+
+
+
 def strict_topic_match(query: str, post_text: str) -> bool:
     """Fail closed for narrow documentary/film requests.
+
+
 
 
     A generic film grant is NOT documentary-specific without explicit support
@@ -639,6 +793,8 @@ def strict_topic_match(query: str, post_text: str) -> bool:
     return True
 
 
+
+
 # These are universal applicant/category words, not per-topic whitelist rules.
 # They do not establish the actual subject of a request on their own.
 GENERIC_INTENT_ROOTS = (
@@ -657,10 +813,18 @@ GENERIC_INTENT_ROOTS = (
 
 
 
+
+
+
+
 def _semantic_tokens(value: str) -> list[str]:
     norm = unicodedata.normalize("NFKC", str(value)).casefold()
     norm = norm.replace("’", "").replace("'", "")
     return re.findall(r"[a-zа-яіїєґ0-9]{3,}", norm)
+
+
+
+
 
 
 
@@ -674,6 +838,10 @@ def _domain_stem(token: str) -> str:
     if len(token) == 5 and token.endswith(('у', 'а', 'я', 'і', 'и')):
         return token[:4]
     return "музи" if token[:5] in ("музик", "музич") else token[:5]
+
+
+
+
 
 
 
@@ -694,8 +862,14 @@ def _specific_terms(terms: list[str] | str) -> list[str]:
 
 
 
+
+
+
+
 def _query_region(query: str) -> str:
     """An oblast named by the subscriber is a hard constraint, not a theme.
+
+
 
 
     Derive it from the ORIGINAL wording so an LLM cannot silently omit it.
@@ -708,6 +882,10 @@ def _query_region(query: str) -> str:
 
 
 
+
+
+
+
 def _educational_institution_request(query: str) -> bool:
     """Educational *institutions* are different applicants from students."""
     q = unicodedata.normalize('NFKC', query).casefold()
@@ -715,6 +893,10 @@ def _educational_institution_request(query: str) -> bool:
         r'(?:заклад\w*\s+(?:освіт\w*|навчальн\w*)|'
         r'(?:освітн\w*|навчальн\w*)\s+заклад\w*|'
         r'школ\w*|шкіл\w*|ліце\w*|гімназі\w*|університет\w*|коледж\w*)',q))
+
+
+
+
 
 
 
@@ -738,6 +920,10 @@ APPLICANT_SCOPE_PATTERNS = (
 
 
 
+
+
+
+
 def _query_subject_text(query: str) -> str:
     """Separate the funded subject from applicant/geography and form labels."""
     q = unicodedata.normalize('NFKC', str(query)).casefold()
@@ -757,6 +943,10 @@ def _query_subject_text(query: str) -> str:
 
 
 
+
+
+
+
 def _applicant_only_query(query: str) -> bool:
     """Detect applicant-only intent, never invent a sector from NGO wording."""
     return (requested_audience(query) != 'any'
@@ -765,8 +955,14 @@ def _applicant_only_query(query: str) -> bool:
 
 
 
+
+
+
+
 def _query_topic_groups(query: str, applicant_only: bool = False) -> list[list[str]]:
     """Fallback tight clauses drawn only from the subscriber's words.
+
+
 
 
     Distinct activities separated with 'та'/commas are ALTERNATIVES (OR),
@@ -804,6 +1000,10 @@ def _query_topic_groups(query: str, applicant_only: bool = False) -> list[list[s
         if stems and stems not in results:
             results.append(stems[:4])
     return results[:5]
+
+
+
+
 
 
 
@@ -895,8 +1095,14 @@ def _semantic_plan(query: str, plan: dict) -> dict:
 
 
 
+
+
+
+
 def _phrase_hit(haystack: str, stems: list[str], max_distance: int = 7) -> bool:
     """2/3-word matching in one short context window, tolerant to inflection.
+
+
 
 
     Unlike `any(term in text)`, "ethno tourism" cannot match a post solely
@@ -925,6 +1131,10 @@ def _phrase_hit(haystack: str, stems: list[str], max_distance: int = 7) -> bool:
 
 
 
+
+
+
+
 def _searchable_positive_text(post: str) -> str:
     """Ignore URLs/hashtags and explicit exclusion blocks for positive proof."""
     post = re.sub(r'https?://\S+|#[^\s]+', ' ', post.casefold())
@@ -945,6 +1155,10 @@ def _searchable_positive_text(post: str) -> str:
 
 
 
+
+
+
+
 def _context_section(text: str, headings: tuple[str,...], limit: int = 520) -> str:
     lines = text.splitlines()
     captured = []
@@ -952,6 +1166,12 @@ def _context_section(text: str, headings: tuple[str,...], limit: int = 520) -> s
         if any(k in line.casefold() for k in headings):
             captured.append(' '.join(lines[i:i+6])[:limit])
     return ' '.join(captured)[:limit*3]
+
+
+
+
+
+
 
 
 
@@ -992,6 +1212,10 @@ def _v56_topic_match(post: str, query: str) -> bool:
 
 
 
+
+
+
+
 def _v56_needs_topic_gate(query: str) -> bool:
     subject = _query_subject_text(query)
     return (any(x in subject for x in (
@@ -999,6 +1223,10 @@ def _v56_needs_topic_gate(query: str) -> bool:
         'пасік', 'пасіч', 'бджіл', 'бджоляр', 'apiary', 'beekeep'))
         or ('інституц' in subject and 'розвит' in subject)
         or ('організаційн' in subject and 'розвит' in subject))
+
+
+
+
 
 
 
@@ -1028,6 +1256,10 @@ def _v56_excluded_region(post: str, aliases: tuple[str, ...]) -> bool:
 
 
 
+
+
+
+
 def _region_eligible(post: str, root: str) -> bool:
     if not root:
         return True
@@ -1050,6 +1282,10 @@ def _region_eligible(post: str, root: str) -> bool:
 
 
 
+
+
+
+
 def _applicant_eligible(post: str, phrases: list[str]) -> bool:
     clean = re.sub(r'https?://\S+|#[^\s]+',' ',post.casefold())
     eligible = _context_section(clean, ('хто може','хто подає','заявник','учасник',
@@ -1067,8 +1303,14 @@ def _applicant_eligible(post: str, phrases: list[str]) -> bool:
 
 
 
+
+
+
+
 def _candidate_matches_subject(text: str, plan: dict) -> tuple[bool, int]:
     """Faceted retrieval: OR between requested activities, AND with audience/region.
+
+
 
 
     Hashtags are an additional positive signal, never a license to ignore
@@ -1131,6 +1373,10 @@ def _candidate_matches_subject(text: str, plan: dict) -> tuple[bool, int]:
 
 
 
+
+
+
+
 def _clean_official_url(u: str) -> str:
     """Ignore tracking/fragment and equivalent trailing slashes in dedup."""
     try:
@@ -1148,6 +1394,10 @@ def _clean_official_url(u: str) -> str:
 
 
 
+
+
+
+
 def _title_signature(title: str) -> set[str]:
     words_ = _semantic_tokens(title)
     # Drop format/currency filler and keep the identifiable programme name.
@@ -1161,8 +1411,14 @@ def _title_signature(title: str) -> set[str]:
 
 
 
+
+
+
+
 def _same_round_by_evidence(a: dict, b: dict) -> bool:
     """Recognize reposted grant with changed title, URL and introductory text.
+
+
 
 
     Must share: deadline + distinctive organizer + funding amount + at least
@@ -1209,8 +1465,14 @@ def _same_round_by_evidence(a: dict, b: dict) -> bool:
 
 
 
+
+
+
+
 def dedupe_programmes(rows: list[dict]) -> list[dict]:
     """Conservatively merge reposts, even with different official URL variants.
+
+
 
 
     A shared organizer alone must NOT dedupe different calls/rounds. Require
@@ -1251,6 +1513,12 @@ def dedupe_programmes(rows: list[dict]) -> list[dict]:
         for key in keys:
             seen_urls.setdefault(key, []).append(row)
     return output
+
+
+
+
+
+
 
 
 
@@ -1335,6 +1603,10 @@ MENU_REGION_LABELS = {
 
 
 
+
+
+
+
 def normalized_menu_facets(raw: object) -> dict | None:
     """Validate only whitelist selections from Worker. No private IDs are stored."""
     if not isinstance(raw, dict):
@@ -1366,6 +1638,10 @@ def normalized_menu_facets(raw: object) -> dict | None:
 
 
 
+
+
+
+
 def _menu_audience_eligible(post: str, audience: str) -> bool:
     if audience == 'all':
         return True
@@ -1385,6 +1661,10 @@ def _menu_audience_eligible(post: str, audience: str) -> bool:
     return bool(re.search(pat, elig, re.I) or
                 re.search(r'(?:для|можуть подат|запрошу\w*|eligible for)\s*.{0,85}'+pat,
                           introductory, re.I))
+
+
+
+
 
 
 
@@ -1420,6 +1700,10 @@ def _menu_geography_eligible(post: str, facets: dict) -> bool:
 
 
 
+
+
+
+
 def _menu_sector_eligible(post: str, facets: dict) -> bool:
     if 'all' in facets['sectors']:
         return True
@@ -1440,10 +1724,18 @@ def _menu_sector_eligible(post: str, facets: dict) -> bool:
 
 
 
+
+
+
+
 def _menu_eligible(post: str, facets: dict) -> bool:
     return (_menu_audience_eligible(post, facets['audience']) and
             _menu_geography_eligible(post, facets) and
             _menu_sector_eligible(post, facets))
+
+
+
+
 
 
 
@@ -1490,6 +1782,8 @@ def _menu_plan(facets: dict, query: str) -> dict:
     return plan
 
 
+
+
 # v5.5: a universal *two-pass* retrieval pattern. The model must only
 # validate evidence in archived posts; lexical lookup itself is deliberately
 # recall-oriented, not a final eligibility decision. These tightly scoped
@@ -1522,6 +1816,10 @@ SERVICE_CONCEPTS = {'psychosocial_services'}
 
 
 
+
+
+
+
 def _concept_hit(text: str, terms: tuple[str, ...]) -> bool:
     clean = re.sub(r'https?://\S+|#[^\s]+', ' ',
                    unicodedata.normalize('NFKC', text).casefold())
@@ -1537,6 +1835,10 @@ def _concept_hit(text: str, terms: tuple[str, ...]) -> bool:
 
 
 
+
+
+
+
 def _intent_concepts(user_subject: str) -> tuple[list[str], list[str]]:
     subject = _query_subject_text(user_subject)
     services = [key for key in SERVICE_CONCEPTS
@@ -1548,8 +1850,14 @@ def _intent_concepts(user_subject: str) -> tuple[list[str], list[str]]:
 
 
 
+
+
+
+
 def _funded_activity_text(post: str) -> str:
     """Only positive scope; remove speculative Ukraine commentary / tag sections.
+
+
 
 
     These paragraphs describe hypothetical uses and should not be treated as
@@ -1572,8 +1880,14 @@ def _funded_activity_text(post: str) -> str:
 
 
 
+
+
+
+
 def _funded_service_evidence(post: str, services: list[str]) -> tuple[bool, int]:
     """Find the *funded work*, not a tag, incidental beneficiary, or URL.
+
+
 
 
     Broad calls mentioning fundable mental-health work can be sent to AI even
@@ -1623,6 +1937,10 @@ def _funded_service_evidence(post: str, services: list[str]) -> tuple[bool, int]
 
 
 
+
+
+
+
 def _other_population_exclusive(post: str, beneficiaries: list[str]) -> bool:
     """Don't broaden an explicitly exclusive beneficiary class."""
     if not beneficiaries:
@@ -1639,8 +1957,14 @@ def _other_population_exclusive(post: str, beneficiaries: list[str]) -> bool:
 
 
 
+
+
+
+
 def _relaxed_subject_candidate(post: str, plan: dict, subject: str) -> tuple[bool, int]:
     """Secondary discovery pass for dependent requests (activity AND group).
+
+
 
 
     If a donor funds the activity but permits broad populations, we keep it
@@ -1666,9 +1990,15 @@ def _relaxed_subject_candidate(post: str, plan: dict, subject: str) -> tuple[boo
 
 
 
+
+
+
+
 def rank_posts(rows: list[dict], query: str, keywords: list[str] | dict,
                now: date | None = None, facets: dict | None = None) -> list[dict]:
     """Two-stage retrieval: explicit-topic evidence first, applicant tier later.
+
+
 
 
     The archive, not the LLM, determines which items are in the candidate pool.
@@ -1798,6 +2128,10 @@ def rank_posts(rows: list[dict], query: str, keywords: list[str] | dict,
 
 
 
+
+
+
+
 def extract_labels(text: str) -> dict[str, str]:
     """Copy source lines; do not invent funder amounts/geographies."""
     patterns = {
@@ -1822,6 +2156,10 @@ def extract_labels(text: str) -> dict[str, str]:
 
 
 
+
+
+
+
 def cf_ai(system: str, payload: object, max_tokens: int = 650) -> dict:
     account = os.environ.get("CF_ACCOUNT_ID", "").strip()
     token = os.environ.get("CF_API_TOKEN", "").strip()
@@ -1841,6 +2179,10 @@ def cf_ai(system: str, payload: object, max_tokens: int = 650) -> dict:
         return json.loads(m.group(0))
     except ValueError as ex:
         raise RuntimeError("Cloudflare AI повернув некоректний JSON") from ex
+
+
+
+
 
 
 
@@ -1882,9 +2224,15 @@ def ai_expand(query: str) -> tuple[str, dict]:
 
 
 
+
+
+
+
 def candidate_evidence(post_text: str, query: str, max_lines: int = 8,
                        plan: dict | None = None) -> str:
     """Select diverse factual passages: topic, applicant and eligible activities.
+
+
 
 
     Avoid URL/hash tags and repeated keywords, and do not pass the LLM merely
@@ -1934,6 +2282,10 @@ def candidate_evidence(post_text: str, query: str, max_lines: int = 8,
 
 
 
+
+
+
+
 def candidate_context(post_text: str, query: str, plan: dict | None = None) -> dict:
     """Evidence passed to AI; only existing archived post text, no external lookup."""
     clean = re.sub(r'https?://\S+|#[^\s]+', '', post_text)
@@ -1945,6 +2297,10 @@ def candidate_context(post_text: str, query: str, plan: dict | None = None) -> d
         'applicant_evidence': _context_section(clean, ('хто може','хто подає',
             'учасник','заявник','для кого','eligib','who can apply'))[:350],
     }
+
+
+
+
 
 
 
@@ -1973,8 +2329,14 @@ def _activity_evidence_excerpt(post: str, query: str) -> str:
 
 
 
+
+
+
+
 def ai_classify(query: str, ranked: list[dict]) -> dict[int, str]:
     """LLM labels: direct, conditional, or rejected (omitted).
+
+
 
 
     Only source-backed matches survive. The model cannot invent archive entries,
@@ -2089,9 +2451,17 @@ def ai_classify(query: str, ranked: list[dict]) -> dict[int, str]:
 
 
 
+
+
+
+
 def ai_select(query: str, ranked: list[dict]) -> list[int]:
     """Backward-compatible list of accepted IDs (classification used in v5.4)."""
     return list(ai_classify(query, ranked))
+
+
+
+
 
 
 
@@ -2127,13 +2497,23 @@ def http_json(url: str, data: dict | None = None, headers: dict | None = None, t
 
 
 
+
+
+
+
 class TelegramRecipientUnavailable(RuntimeError):
     """A private recipient blocked the bot or deactivated their account.
+
+
 
 
     This is a user-specific delivery issue, not a failure of the bot as a whole.
     Do not expose Telegram chat IDs or credentials in logs.
     """
+
+
+
+
 
 
 
@@ -2158,6 +2538,10 @@ def tg(method: str, params: dict) -> dict:
 
 
 
+
+
+
+
 # Native Telegram interface: no website, Web App, hosting or paid platform.
 # Buttons and ForceReply are standard Bot API reply markups.
 UI_ORDER = "🔎 Замовити каталог"
@@ -2166,6 +2550,8 @@ UI_HELP = "❓ Як користуватися"
 UI_EXAMPLES = "💡 Приклади тем"
 UI_STATUS = "⏳ Стан черги"
 BOT_PROFILE_VERSION = 1
+
+
 
 
 UI_KEYBOARD = {
@@ -2186,6 +2572,10 @@ UI_TOPIC_INPUT = {
 
 
 
+
+
+
+
 def message(chat_id: int, text: str, *, reply_markup: dict | None = None,
             formatted: bool = False) -> None:
     params = {"chat_id": chat_id, "text": text[:4000], "disable_web_page_preview": True}
@@ -2194,6 +2584,10 @@ def message(chat_id: int, text: str, *, reply_markup: dict | None = None,
     if formatted:
         params["parse_mode"] = "HTML"
     tg("sendMessage", params)
+
+
+
+
 
 
 
@@ -2210,6 +2604,10 @@ def show_menu(chat_id: int) -> None:
             "👇 Оберіть кнопку нижче або просто напишіть свою тему.\n"
             "⏳ Бот перевіряє повідомлення приблизно раз на 15 хвилин; відповідь не миттєва.",
             reply_markup=UI_KEYBOARD, formatted=True)
+
+
+
+
 
 
 
@@ -2231,6 +2629,10 @@ def show_help(chat_id: int) -> None:
 
 
 
+
+
+
+
 def show_examples(chat_id: int) -> None:
     message(chat_id,
             "💡 <b>Приклади тем для запиту</b>\n\n"
@@ -2247,6 +2649,10 @@ def show_examples(chat_id: int) -> None:
 
 
 
+
+
+
+
 def prompt_for_topic(chat_id: int) -> None:
     message(chat_id,
             "✍️ <b>Тема нового каталогу</b>\n\n"
@@ -2257,6 +2663,10 @@ def prompt_for_topic(chat_id: int) -> None:
             "Надсилання теми — це <b>один запит на добу</b>; натискання кнопок ліміт не витрачає.\n"
             "⏳ Повідомлення обробляються приблизно кожні 15 хвилин.",
             reply_markup=UI_TOPIC_INPUT, formatted=True)
+
+
+
+
 
 
 
@@ -2279,6 +2689,10 @@ def show_catalogs(chat_id: int, state: dict) -> None:
 
 
 
+
+
+
+
 def show_status(chat_id: int, state: dict) -> None:
     count = len(state.get("queue", []))
     message(chat_id,
@@ -2292,8 +2706,14 @@ def show_status(chat_id: int, state: dict) -> None:
 
 
 
+
+
+
+
 def configure_bot_profile(state: dict) -> None:
     """One-time lightweight Telegram setup; consumes no AI tokens or credits.
+
+
 
 
     Do not stop the catalog runner if a Telegram profile edit fails. Retry on
@@ -2325,6 +2745,10 @@ def configure_bot_profile(state: dict) -> None:
 
 
 
+
+
+
+
 def upload_pdf(file: Path, caption: str) -> int:
     token = os.environ["NGO_GRANTS_AI_BOT_TOKEN"].strip()
     boundary = "----ngo-grants-ai-pdf" + hashlib.sha256(file.name.encode()).hexdigest()[:16]
@@ -2348,6 +2772,10 @@ def upload_pdf(file: Path, caption: str) -> int:
 
 
 
+
+
+
+
 def _font():
     from reportlab.pdfbase import pdfmetrics
     from reportlab.pdfbase.ttfonts import TTFont
@@ -2360,8 +2788,14 @@ def _font():
 
 
 
+
+
+
+
 def pdf_safe_title(value: str) -> str:
     """Remove emoji unsupported by the embedded Cyrillic PDF font.
+
+
 
 
     This changes only visual titles. The linked post and original archive text
@@ -2373,8 +2807,14 @@ def pdf_safe_title(value: str) -> str:
 
 
 
+
+
+
+
 def catalog_card_fields(post_text: str) -> dict[str, str]:
     """Extract short, source-grounded facts without mixing adjacent sections.
+
+
 
 
     The archive contains many headings without a colon (``💰 ФІНАНСУВАННЯ``),
@@ -2384,10 +2824,14 @@ def catalog_card_fields(post_text: str) -> dict[str, str]:
     raw = [pdf_safe_title(x).strip() for x in post_text.splitlines()]
 
 
+
+
     def plain(line: str) -> str:
         line = re.sub(r'https?://\S+|#[\wа-яіїєґ]+', '', line, flags=re.I)
         line = re.sub(r'^[•*▪✅✔◦\-–—\s]+', '', line)
         return re.sub(r'\s+', ' ', line).strip(' :—–-•*')
+
+
 
 
     heads = {
@@ -2405,6 +2849,8 @@ def catalog_card_fields(post_text: str) -> dict[str, str]:
         if len(s) > 165:
             return None
         return next((k for k,p in start.items() if p.match(s)), None)
+
+
 
 
     def take_block(key: str) -> list[str]:
@@ -2440,6 +2886,8 @@ def catalog_card_fields(post_text: str) -> dict[str, str]:
         return []
 
 
+
+
     # Capture a COMPLETE introductory sentence, not an arbitrary first 190 chars
     # or two lines (those were the source of dangling "які…" on the PDF cards).
     intro = []
@@ -2473,6 +2921,8 @@ def catalog_card_fields(post_text: str) -> dict[str, str]:
         summary = 'Опис програми та повні умови — в оригінальному дописі.'
 
 
+
+
     funding_lines = take_block('funding')
     monetary = re.compile(r'(?:€|£|\$|₴|\b(?:EUR|USD|GBP)\b|\d\s*%|євро|грн|гривен|гривн|долар|\b(?:оплачен|фінансован|контракт|пілот))', re.I)
     amounts = [x for x in funding_lines if monetary.search(x)]
@@ -2489,6 +2939,8 @@ def catalog_card_fields(post_text: str) -> dict[str, str]:
         funding = ''
 
 
+
+
     def clean_fact(value: str, fallback: str) -> str:
         """Never print dangling clauses or duplicated semicolon separators."""
         value = re.sub(r'\s*;+\s*', '; ', str(value)).strip(' ;:,')
@@ -2501,6 +2953,8 @@ def catalog_card_fields(post_text: str) -> dict[str, str]:
                 or value.endswith(('…','...'))):
             return fallback
         return value
+
+
 
 
     funding = clean_fact(funding, 'Деталі фінансування — в дописі.') if funding else ''
@@ -2539,6 +2993,8 @@ def catalog_card_fields(post_text: str) -> dict[str, str]:
                 break
 
 
+
+
     return {
         'summary': summary or 'Опис і повні умови — в публікації каналу.',
         'funding': funding or 'Суму уточніть у дописі',
@@ -2546,6 +3002,10 @@ def catalog_card_fields(post_text: str) -> dict[str, str]:
         'geography': geography or 'Географія — у дописі',
         'warning': warning or 'Перед поданням перевірте чинні правила.',
     }
+
+
+
+
 
 
 
@@ -2561,8 +3021,14 @@ def _catalog_ellipsis(s: str, max_chars: int) -> str:
 
 
 
+
+
+
+
 def pdf_catalog(path: Path, title: str, topic: str, rows: list[dict], stamp: date) -> None:
     """Branded A4 PDF: cover + separate 2-column detail cards (max 2 per page).
+
+
 
 
     All grant facts are extracted from archival text; all grant links point
@@ -2576,6 +3042,8 @@ def pdf_catalog(path: Path, title: str, topic: str, rows: list[dict], stamp: dat
     from reportlab.platypus import Paragraph
     from reportlab.pdfbase import pdfmetrics
     from reportlab.pdfbase.ttfonts import TTFont
+
+
 
 
     font = _font()
@@ -2602,10 +3070,14 @@ def pdf_catalog(path: Path, title: str, topic: str, rows: list[dict], stamp: dat
     c.setAuthor('NGO Grants — @ngo_grants')
 
 
+
+
     def draw_text(s: str, x: float, y: float, size: float = 9, face: str | None = None, color=None):
         c.setFillColor(color or NAVY)
         c.setFont(face or font, size)
         c.drawString(x, y, pdf_safe_title(s))
+
+
 
 
     def pdraw(s: str, x: float, top: float, width: float, size=8.5,
@@ -2618,11 +3090,15 @@ def pdf_catalog(path: Path, title: str, topic: str, rows: list[dict], stamp: dat
         return h
 
 
+
+
     def measure(s: str, width: float, size: float, leading: float, face=None) -> float:
         st = ParagraphStyle('catalog-measure', fontName=face or font,
                             fontSize=size, leading=leading)
         item = Paragraph(escape(pdf_safe_title(s), quote=False), st)
         return item.wrap(width, H)[1]
+
+
 
 
     def card_fields(row: dict) -> dict[str, str]:
@@ -2643,6 +3119,8 @@ def pdf_catalog(path: Path, title: str, topic: str, rows: list[dict], stamp: dat
             fields['warning'] = fields['warning'] + ' ' + row['_deadline_note']
 
 
+
+
         def preserve_complete(value: str, maximum: int, fallback: str) -> str:
             if len(value) <= maximum:
                 return value
@@ -2661,6 +3139,8 @@ def pdf_catalog(path: Path, title: str, topic: str, rows: list[dict], stamp: dat
             return '; '.join(kept) if kept else fallback
 
 
+
+
         limits = {
             'summary': (430, 'Повний опис — в оригінальному дописі.'),
             'funding': (340, 'Деталі фінансування — в оригінальному дописі.'),
@@ -2670,6 +3150,8 @@ def pdf_catalog(path: Path, title: str, topic: str, rows: list[dict], stamp: dat
         }
         return {name: preserve_complete(fields[name], maximum, fallback)
                 for name, (maximum, fallback) in limits.items()}
+
+
 
 
     def card_min_height(row: dict) -> float:
@@ -2686,6 +3168,8 @@ def pdf_catalog(path: Path, title: str, topic: str, rows: list[dict], stamp: dat
                          measure(fields['warning'], col_w, 7.9, 11.8))
             # Button, labels and all vertical whitespace, including clearance.
             return 171 + title_h + summary_h + first + second + 6
+
+
 
 
         need = compute()
@@ -2706,6 +3190,8 @@ def pdf_catalog(path: Path, title: str, topic: str, rows: list[dict], stamp: dat
                     break
         row['_v41_card_fields'] = fields
         return need
+
+
 
 
     TWO_CARD_HEIGHT = 106*mm
@@ -2733,6 +3219,8 @@ def pdf_catalog(path: Path, title: str, topic: str, rows: list[dict], stamp: dat
     max_page = 1 + len(prepared_pages)
 
 
+
+
     def pill(x: float, y: float, w: float, h: float, label: str, bg, fg,
              size: float = 7.1):
         c.setFillColor(bg)
@@ -2740,6 +3228,8 @@ def pdf_catalog(path: Path, title: str, topic: str, rows: list[dict], stamp: dat
         c.setFillColor(fg)
         c.setFont(bold, size)
         c.drawCentredString(x+w/2, y+(h-size)/2+1, pdf_safe_title(label))
+
+
 
 
     def tag_of(text: str) -> str:
@@ -2763,6 +3253,8 @@ def pdf_catalog(path: Path, title: str, topic: str, rows: list[dict], stamp: dat
         return 'ГРАНТОВА МОЖЛИВІСТЬ'
 
 
+
+
     def footer(page: int):
         c.setStrokeColor(LINE)
         c.line(20*mm, 17*mm, W-20*mm, 17*mm)
@@ -2771,6 +3263,8 @@ def pdf_catalog(path: Path, title: str, topic: str, rows: list[dict], stamp: dat
         c.setFont(font, 7.6)
         c.setFillColor(GREY)
         c.drawRightString(W-20*mm, 12*mm, f'{page} / {max_page}')
+
+
 
 
     def header(page: int):
@@ -2784,6 +3278,8 @@ def pdf_catalog(path: Path, title: str, topic: str, rows: list[dict], stamp: dat
         draw_text(f'ГРАНТОВІ МОЖЛИВОСТІ  ·  {len(rows)} У ДОБІРЦІ',
                   20*mm, H-49*mm, 9.5, bold, NAVY)
         footer(page)
+
+
 
 
     def card(row: dict, number: int, x: float, y: float, width: float, height: float):
@@ -2820,6 +3316,8 @@ def pdf_catalog(path: Path, title: str, topic: str, rows: list[dict], stamp: dat
             raise RuntimeError(f'Картка {number}: недостатньо місця без обривання речень')
 
 
+
+
         title_h = pdraw(label, x+16, top-44, width-32, 10.5, 15.2, bold, NAVY)
         summary_top = top-44-title_h-10
         intro_h = pdraw(summary, x+16, summary_top, width-32, 8.6, 13, font, DARK)
@@ -2845,6 +3343,8 @@ def pdf_catalog(path: Path, title: str, topic: str, rows: list[dict], stamp: dat
         # Links always point to a channel post, not an external grant site.
         c.linkURL(f'https://t.me/{CHANNEL}/{int(row["id"])}',
                   (x+16, btn_y, x+width-16, btn_y+27), relative=0)
+
+
 
 
     # COVER
@@ -2907,10 +3407,16 @@ def pdf_catalog(path: Path, title: str, topic: str, rows: list[dict], stamp: dat
     c.save()
 
 
+
+
 def default_state() -> dict:
     return {"schema_version": 1, "last_update_id": 0, "users_days": {},
             "queue": [], "published": [], "last_post_at": None,
             "no_results": []}
+
+
+
+
 
 
 
@@ -2922,6 +3428,10 @@ def load_state(path: Path = STATE_PATH) -> dict:
     if data.get("schema_version") != 1:
         raise RuntimeError("Unexpected state schema")
     return data
+
+
+
+
 
 
 
@@ -2944,9 +3454,17 @@ def save_state(state: dict, path: Path = STATE_PATH) -> None:
 
 
 
+
+
+
+
 def user_hash(user_id: int, token: str) -> str:
     # HMAC protects from enumerable public user IDs in public GitHub state.
     return hmac.new(token.encode("utf-8"), str(user_id).encode(), hashlib.sha256).hexdigest()[:30]
+
+
+
+
 
 
 
@@ -2959,6 +3477,8 @@ def handle_update(update: dict, state: dict, token: str) -> None:
     chat_id = chat["id"]
     txt = (msg.get("text") or "").strip()
     cmd = txt.split(maxsplit=1)[0].split("@")[0].lower() if txt else ""
+
+
 
 
     # Navigation actions are NEVER counted as a request.
@@ -2991,6 +3511,8 @@ def handle_update(update: dict, state: dict, token: str) -> None:
         message(chat_id, "Надішліть тему одним текстовим повідомленням. Натисніть «🔎 Замовити каталог».",
                 reply_markup=UI_KEYBOARD)
         return
+
+
 
 
     cleaned = sanitize_user_text(txt)
@@ -3041,6 +3563,10 @@ def handle_update(update: dict, state: dict, token: str) -> None:
 
 
 
+
+
+
+
 def accept_requests(state: dict, token: str) -> None:
     offset = state.get("last_update_id", 0) + 1
     # No webhooks. Short polling every ~15 minutes via Actions.
@@ -3076,8 +3602,14 @@ def accept_requests(state: dict, token: str) -> None:
 
 
 
+
+
+
+
 def gateway_api(path: str, data: dict | None = None) -> dict:
     """Worker/D1 is the source for *new* user requests in webhook mode.
+
+
 
 
     The Telegram token is never passed to the Worker gateway endpoint: it has
@@ -3101,6 +3633,10 @@ def gateway_api(path: str, data: dict | None = None) -> dict:
     except RuntimeError as exc:
         # Deliberately don't output gateway URL or bearer token.
         raise RuntimeError("Не вдалось обмінятися даними з ботом Cloudflare (" + type(exc).__name__ + ")") from None
+
+
+
+
 
 
 
@@ -3151,6 +3687,10 @@ def import_gateway_requests(state: dict) -> None:
 
 
 
+
+
+
+
 def notify_gateway(state: dict) -> None:
     """Run AFTER successful Git push, so a failed push cannot lose requests."""
     if not os.environ.get("NGO_BOT_GATEWAY_URL"):
@@ -3169,6 +3709,10 @@ def notify_gateway(state: dict) -> None:
 
 
 
+
+
+
+
 def can_publish(state: dict, now: datetime) -> bool:
     local_day = now.astimezone(KYIV).date().isoformat()
     today_count = sum(x.get("published_on") == local_day for x in state.get("published", []))
@@ -3182,8 +3726,14 @@ def can_publish(state: dict, now: datetime) -> bool:
 
 
 
+
+
+
+
 def _no_results_same_topic(first: str, second: str) -> bool:
     """Deduplicate equivalent word-for-word requests, not different topics.
+
+
 
 
     Strong semantic expansion is inappropriate here: two requests mentioning
@@ -3193,6 +3743,10 @@ def _no_results_same_topic(first: str, second: str) -> bool:
         return ' '.join(re.findall(r"[a-zа-яіїєґ0-9]+",
                                    unicodedata.normalize('NFKC', value).casefold()))
     return bool(normalize(first)) and normalize(first) == normalize(second)
+
+
+
+
 
 
 
@@ -3214,8 +3768,14 @@ def recent_no_result(state: dict, topic: str, *, now: date | None = None,
 
 
 
+
+
+
+
 def mark_no_results(state: dict, entry: dict, reason: str) -> dict:
     """Queue a public outcome (without privately identifying the subscriber).
+
+
 
 
     This function never contacts Telegram. Successful/failed sends are handled
@@ -3254,6 +3814,10 @@ def mark_no_results(state: dict, entry: dict, reason: str) -> dict:
 
 
 
+
+
+
+
 def public_no_results_text(item: dict) -> str:
     """Post topic only, never a private Telegram account or chat ID."""
     topic = escape(sanitize_user_text(str(item['topic']))[:250])
@@ -3271,8 +3835,14 @@ def public_no_results_text(item: dict) -> str:
 
 
 
+
+
+
+
 def publish_pending_no_results(state: dict, *, now: datetime | None = None) -> bool:
     """Publish at most one pending public status and at most 3 per Kyiv day.
+
+
 
 
     A Telegram failure leaves the entry pending. It does not consume a catalog
@@ -3331,8 +3901,14 @@ def publish_pending_no_results(state: dict, *, now: datetime | None = None) -> b
 
 
 
+
+
+
+
 def make_one_catalog(state: dict, rows: list[dict], *, dry_run=False) -> bool:
     """Review every eligible post in small AI batches across scheduled runs.
+
+
 
 
     No top-N clipping: every selected, still-open matching archive post is
@@ -3392,6 +3968,8 @@ def make_one_catalog(state: dict, rows: list[dict], *, dry_run=False) -> bool:
         ranked = rank_posts(rows, query, keywords, facets=facets)
 
 
+
+
     lookup = {int(r["id"]): r for r in ranked}
     candidate_ids = review["candidate_ids"]
     offset = int(review["offset"])
@@ -3415,11 +3993,15 @@ def make_one_catalog(state: dict, rows: list[dict], *, dry_run=False) -> bool:
         save_state(state)
 
 
+
+
     if offset < len(candidate_ids):
         print(f"Тематичний відбір триває: перевірено {offset}/{len(candidate_ids)} "
               f"кандидатів; відібрано {len(review['selected_ids'])}. "
               "Продовжимо наступним плановим запуском без втрати результатів.")
         return True
+
+
 
 
     selected_ids = set(review["selected_ids"])
@@ -3470,6 +4052,10 @@ def make_one_catalog(state: dict, rows: list[dict], *, dry_run=False) -> bool:
 
 
 
+
+
+
+
 def demo(query: str, archive: Path, output: Path) -> None:
     rows = read_archive(archive)
     matches = rank_posts(rows, query, [])
@@ -3478,6 +4064,10 @@ def demo(query: str, archive: Path, output: Path) -> None:
         return
     pdf_catalog(output, "Тематичний каталог: " + query, query, matches, today_kyiv())
     print("PDF створено:", output, "дописів:", len(matches))
+
+
+
+
 
 
 
@@ -3545,7 +4135,18 @@ def main():
             # quota allows. A failed Telegram send stays pending for a later run.
             if publish_pending_no_results(state):
                 save_state(state)
-    except Exception:
+    except Exception as exc:
+        # Log a redacted root cause, NOT credentials or user identifiers.
+        # The previous generic "Catalog publish failed" hid all diagnostics.
+        safe_error = re.sub(r'https?://\S+|\b\d{6,12}:[A-Za-z0-9_-]{20,}\b',
+                            '[приховано]', str(exc).replace('\n', ' '))
+        last_tb = exc.__traceback__
+        while last_tb is not None and last_tb.tb_next is not None:
+            last_tb = last_tb.tb_next
+        source = (f"{last_tb.tb_frame.f_code.co_name}:{last_tb.tb_lineno}"
+                  if last_tb is not None else 'невідоме місце')
+        print(f"Помилка створення каталогу: {type(exc).__name__}, "
+              f"етап {source}: {safe_error[:180]}", file=sys.stderr)
         # Pause AI retries rather than burning the free allowance on every cron run.
         if state.get("queue"):
             item = state["queue"][0]
@@ -3555,6 +4156,10 @@ def main():
             save_state(state)
         print("Не вдалося створити каталог. Повторна спроба відкладена, щоб зберегти ШІ-квоту.", file=sys.stderr)
         raise RuntimeError("Catalog publish failed") from None
+
+
+
+
 
 
 
