@@ -2,7 +2,24 @@
   "schema_version": 1,
   "last_update_id": 272838698,
   "users_days": {},
-  "queue": [],
+  "queue": [
+    {
+      "id": 272838929,
+      "topic": "Кіно; для некомерційних організацій; сфери: Культура та мистецтво, Медіа та журналістика; в Україні",
+      "requested_at": "2026-10-21T08:07:03.953Z",
+      "facets": {
+        "audience": "nonprofit",
+        "sectors": [
+          "culture",
+          "media"
+        ],
+        "custom_sector": "",
+        "geo": "ukraine",
+        "region": "",
+        "detail": "Кіно"
+      }
+    }
+  ],
   "published": [
     {
       "id": 272838672,
@@ -718,7 +735,8 @@
     272838862,
     272838877,
     272838887,
-    272838915
+    272838915,
+    272838929
   ],
   "no_results": [
     {
@@ -779,5 +797,132 @@
       "published_on": "2026-10-20",
       "channel_url": "https://t.me/ngo_grants/3355"
     }
-  ]
+  ],
+  "ai_review": {
+    "request_id": 272838929,
+    "title": "Кіно — Україна",
+    "keywords": {
+      "title": "Кіно — Україна",
+      "subject": "Кіно",
+      "source_query": "Кіно",
+      "activity": "Кіно",
+      "applicant": "Некомерційна організація",
+      "requirements": [
+        "кінорежисерський досвід",
+        "кінорежисерський проект",
+        "Тип заявника (обов’язково): Некомерційна організація",
+        "Сфери (будь-яка обрана): культура та мистецтво, медіа та журналістика",
+        "Географія (обов’язково): Україна"
+      ],
+      "query_anchors": [
+        "кіно"
+      ],
+      "semantic_terms": [
+        "кінор",
+        "кінок"
+      ],
+      "topic_groups": [
+        [
+          "кіно"
+        ]
+      ],
+      "topic_synonyms": [],
+      "region_root": "",
+      "audience": "any",
+      "regional_focus": false,
+      "applicant_required": false,
+      "applicant_only": false,
+      "applicant_phrases": [],
+      "version": 9,
+      "facets": {
+        "audience": "nonprofit",
+        "sectors": [
+          "culture",
+          "media"
+        ],
+        "custom_sector": "",
+        "geo": "ukraine",
+        "region": "",
+        "detail": "Кіно"
+      }
+    },
+    "candidate_ids": [
+      2674,
+      3130,
+      3127,
+      3093,
+      2020,
+      3310,
+      3077,
+      2911,
+      1487,
+      2942,
+      3107,
+      2654,
+      3056,
+      2334,
+      3330,
+      3237,
+      3277,
+      2996,
+      3128,
+      2190,
+      3276,
+      1585,
+      1139,
+      2989,
+      642,
+      3337,
+      3384,
+      2639,
+      2978,
+      2716,
+      2741,
+      2381,
+      2728,
+      1188,
+      1164,
+      500,
+      2902,
+      2896,
+      1664
+    ],
+    "offset": 36,
+    "selected_ids": [
+      3130,
+      3127,
+      3093,
+      1487,
+      2942,
+      3107,
+      2654,
+      3330,
+      2190,
+      3276,
+      1139,
+      2989,
+      3337,
+      2728,
+      1164,
+      500
+    ],
+    "selected_levels": {
+      "3130": "conditional",
+      "3127": "conditional",
+      "3093": "conditional",
+      "1487": "conditional",
+      "2942": "conditional",
+      "3107": "conditional",
+      "2654": "conditional",
+      "3330": "conditional",
+      "2190": "conditional",
+      "3276": "conditional",
+      "1139": "conditional",
+      "2989": "conditional",
+      "3337": "conditional",
+      "2728": "conditional",
+      "1164": "conditional",
+      "500": "conditional"
+    }
+  }
 }
