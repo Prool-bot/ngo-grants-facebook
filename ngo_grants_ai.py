@@ -103,7 +103,7 @@ MIN_GAP_HOURS = 2
 # Review every candidate over successive scheduled runs to preserve free AI credits.
 AI_REVIEW_BATCH_SIZE = 12
 AI_REVIEW_BATCHES_PER_RUN = 3
-SEARCH_ENGINE_VERSION = 9  # NGO Grants AI v5.6.2: faithful titles and funded-activity verification
+SEARCH_ENGINE_VERSION = 10  # NGO Grants AI v5.6.3: hard topical / NGO eligibility evidence
 # Public status messages are independent of the 3-PDF/day quota.
 MAX_NO_RESULTS_PER_DAY = 3
 NO_RESULTS_REPEAT_DAYS = 7
@@ -630,7 +630,7 @@ DOCUMENTARY_TERMS = (
 )
 FILM_TERMS = (
     "кіно", "кінопро", "фільм", "film", "cinema", "movie", "screenplay",
-    "screenwriting", "filmmak", "режисер", "продюсер", "анімаці", "animation",
+    "screenwriting", "filmmak", "анімаційн фільм", "animated film",
 )
 
 
@@ -727,6 +727,82 @@ def software_request(query: str) -> bool:
 
 
 
+# v5.6.3: A passing mention of a producer, film among excluded disciplines,
+# or cinema as the location of an unrelated activity MUST NOT pass as a movie
+# funding opportunity. This is a deterministic floor beneath Cloudflare AI.
+def _film_fundable(post: str) -> bool:
+    text = _v562_fundable_scope(post)
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    if not lines:
+        return False
+    title = lines[0]
+    opening = "\n".join(lines[:11])
+    # A film-specific funding programme names the cinematic deliverable in
+    # its heading or first introductory paragraph.
+    film_work = re.compile(
+        r"(?:фільм\w*|кінопроєкт\w*|кінопроект\w*|кіновиробництв\w*|"
+        r"кінематограф\w*|кінофестивал\w*|кінопрокат\w*|"
+        r"документальн\w*\s+кіно|cinema|filmmak\w*|"
+        r"film(?:s|making|makers|\s+projects?|\s+production|\s+festival)?|"
+        r"movie(?:s|making)?|screenplay|screenwriting|"
+        r"анімаційн\w*\s+фільм\w*|animated\s+films?)", re.I)
+    funding = re.compile(
+        r"грант|підтрим|фінанс|конкурс|премі|розробл|виробництв|"
+        r"створенн|зйом|прокат|промоуш|просуван|дистриб|"
+        r"фестивал|резиденц|стипенд|fund|grant|award|"
+        r"support|development|production|distribution|residen", re.I)
+    if film_work.search(title) and funding.search(opening[:1100]):
+        return True
+    # Film work stated in the introduction, not necessarily in a generic
+    # grant title, can still qualify when clearly being financed.
+    for line in lines[1:8]:
+        if film_work.search(line) and funding.search(line):
+            return True
+    # Explicitly supported cinema deliverables deeper in grant calls.
+    # Do not mistake film in exclusions, applicant biographies or disciplines
+    # of a general visual-art prize for a fundable film project.
+    for i, line in enumerate(lines):
+        if i < 8:
+            continue
+        if re.search(r"(?:що\s+підтрим|що\s+фінансу|напрями\s+підтрим|"
+                     r"eligible\s+projects|supported\s+projects)", line, re.I):
+            scope = " ".join(lines[i:i+5])
+            if film_work.search(scope) and funding.search(scope):
+                return True
+    return False
+
+
+def _film_nonprofit_eligible(post: str) -> bool:
+    """An individual/film company award is not automatically a grant to an NGO."""
+    clean = re.sub(r"https?://\S+", " ", post.casefold())
+    block = _context_section(clean, ('хто може', 'хто подає', 'для кого',
+        'заявник', 'учасник', 'eligib', 'who can apply'), limit=900)
+    direct = applicant_category_eligible(post, 'organization')
+    ngo = bool(re.search(r"(?:громадськ\w*\s+організаці|"
+        r"неприбутков\w*\s+організаці|благодійн\w*\s+"
+        r"(?:фонд|організаці)|\bngo\b|\bnon-?profit\b|"
+        r"civil society organi)", block, re.I))
+    # Film production COMPANIES have specialized eligibility. They must
+    # not count as generic NGO applicants unless rules explicitly allow it.
+    company_only = bool(re.search(
+        r"(?:незалежн\w*\s+(?:кіновиробнич\w*|продюсерськ\w*)\s+"
+        r"компані|кінокомпані|кіностуді|"
+        r"independent\s+(?:film\s+)?production\s+compan)", block, re.I))
+    if company_only and not ngo:
+        return False
+    if direct:
+        return True
+    # Conditional inclusion is allowed only for an explicit partnership
+    # route involving NGOs, not imaginary partnerships inferred by AI.
+    return bool(re.search(
+        r"(?:громадськ\w*\s+організаці|неприбутков\w*\s+"
+        r"організаці|\bngo\b|\bnon-?profit\b)"
+        r".{0,100}(?:партнер|співзаявник|консорціум|partner|co-applicant)|"
+        r"(?:партнер|співзаявник|консорціум|partner|co-applicant)"
+        r".{0,100}(?:громадськ\w*\s+організаці|неприбутков\w*"
+        r"\s+організаці|\bngo\b|\bnon-?profit\b)", block, re.I))
+
+
 def strict_topic_match(query: str, post_text: str) -> bool:
     """Fail closed for narrow documentary/film requests.
 
@@ -745,10 +821,10 @@ def strict_topic_match(query: str, post_text: str) -> bool:
         if explicitly_excludes_documentary(post_text):
             return False
         # Documentary photography alone is not a film opportunity.
-        return (any(term in source for term in DOCUMENTARY_TERMS)
-                and any(term in source for term in FILM_TERMS))
+        return (_film_fundable(post_text) and
+                any(term in source for term in DOCUMENTARY_TERMS))
     if film_request(query):
-        return any(term in source for term in FILM_TERMS)
+        return _film_fundable(post_text)
     # Multi-facet requests must not turn into generic grants for one facet.
     # This also covers the currently queued "гранти для бджолярів - жінок".
     q = unicodedata.normalize('NFKC', query).casefold()
@@ -2125,6 +2201,11 @@ def rank_posts(rows: list[dict], query: str, keywords: list[str] | dict,
         narrow = (facets.get('detail') or facets.get('custom_sector') or '') if facets else query
         if narrow and not strict_topic_match(narrow, content):
             continue
+        # For film searches by an NGO, reject individual-only and company-only
+        # competitions BEFORE involving the AI (saves quota and false claims).
+        if facets and facets["audience"] == "nonprofit" and film_request(narrow):
+            if not _film_nonprofit_eligible(content):
+                continue
         if _v56_needs_topic_gate(narrow) and not _v56_topic_match(content, narrow):
             continue
         if facets is None and re.search(
@@ -2575,6 +2656,10 @@ def ai_classify(query: str, ranked: list[dict]) -> dict[int, str]:
                 facets = plan.get('facets') if isinstance(plan, dict) else None
                 specific = facets.get('detail') or facets.get('custom_sector') or '' if facets else query
                 if not strict_topic_match(specific, row.get('text') or ''):
+                    continue
+                if (facets and facets.get("audience") == "nonprofit"
+                        and film_request(specific) and
+                        not _film_nonprofit_eligible(row.get("text") or "")):
                     continue
                 if (_v56_needs_topic_gate(specific) and
                         not _v56_topic_match(row.get('text') or '', specific)):
