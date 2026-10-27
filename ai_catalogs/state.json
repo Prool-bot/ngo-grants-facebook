@@ -2,23 +2,7 @@
   "schema_version": 1,
   "last_update_id": 272838698,
   "users_days": {},
-  "queue": [
-    {
-      "id": 272838961,
-      "topic": "Грантові та інші можливості; для некомерційних організацій; сфери: Освіта та наука; в Україні",
-      "requested_at": "2026-10-27T19:36:16.387Z",
-      "facets": {
-        "audience": "nonprofit",
-        "sectors": [
-          "education"
-        ],
-        "custom_sector": "",
-        "geo": "ukraine",
-        "region": "",
-        "detail": ""
-      }
-    }
-  ],
+  "queue": [],
   "published": [
     {
       "id": 272838672,
@@ -811,9 +795,57 @@
         "region": "",
         "detail": "Гранти для територіальних громад"
       }
+    },
+    {
+      "id": 272838961,
+      "topic": "Грантові та інші можливості; для некомерційних організацій; сфери: Освіта та наука; в Україні",
+      "title": "освіта та наука — Україна",
+      "channel_url": "https://t.me/ngo_grants/3549",
+      "pdf": "ai_catalogs/pdfs/ngo_grants_20261027_272838961.pdf",
+      "post_ids": [
+        3201,
+        1168,
+        2980,
+        2979,
+        1411,
+        2566,
+        3016,
+        3419,
+        1692,
+        3078,
+        3044,
+        939,
+        2710,
+        3529,
+        3088,
+        3495,
+        3156,
+        3415,
+        3113,
+        3448,
+        1908,
+        3234,
+        2019,
+        3303,
+        2638,
+        2650,
+        1265
+      ],
+      "published_on": "2026-10-27",
+      "valid_until": "2026-11-26",
+      "facets": {
+        "audience": "nonprofit",
+        "sectors": [
+          "education"
+        ],
+        "custom_sector": "",
+        "geo": "ukraine",
+        "region": "",
+        "detail": ""
+      }
     }
   ],
-  "last_post_at": "2026-10-27T18:17:19.693180+00:00",
+  "last_post_at": "2026-10-27T20:45:34.715306+00:00",
   "bot_profile_version": 1,
   "gateway_seen_ids": [
     272838699,
@@ -893,145 +925,5 @@
       "published_on": "2026-10-20",
       "channel_url": "https://t.me/ngo_grants/3355"
     }
-  ],
-  "ai_review": {
-    "request_id": 272838961,
-    "title": "освіта та наука — Україна",
-    "keywords": {
-      "version": 10,
-      "title": "освіта та наука — Україна",
-      "subject": "освіта та наука",
-      "activity": "освіта та наука",
-      "applicant": "Некомерційна організація",
-      "requirements": [
-        "Тип заявника (обов’язково): Некомерційна організація",
-        "Сфери (будь-яка обрана): освіта та наука",
-        "Географія (обов’язково): Україна"
-      ],
-      "topic_groups": [],
-      "topic_synonyms": [],
-      "semantic_terms": [],
-      "query_anchors": [],
-      "audience": "any",
-      "region_root": "",
-      "regional_focus": false,
-      "applicant_required": false,
-      "facets": {
-        "audience": "nonprofit",
-        "sectors": [
-          "education"
-        ],
-        "custom_sector": "",
-        "geo": "ukraine",
-        "region": "",
-        "detail": ""
-      },
-      "source_query": ""
-    },
-    "candidate_ids": [
-      3521,
-      3282,
-      3411,
-      3523,
-      3103,
-      3448,
-      3303,
-      3480,
-      2981,
-      2611,
-      3044,
-      3495,
-      1940,
-      2557,
-      3050,
-      3052,
-      3415,
-      2566,
-      3016,
-      3522,
-      3078,
-      2835,
-      3113,
-      2980,
-      3156,
-      3088,
-      338,
-      2638,
-      2650,
-      2710,
-      3529,
-      3234,
-      1692,
-      3419,
-      939,
-      2979,
-      1168,
-      3075,
-      2740,
-      2577,
-      2599,
-      1142,
-      3059,
-      3418,
-      3466,
-      2363,
-      3080,
-      3201,
-      2019,
-      1265,
-      1448,
-      623,
-      1908,
-      1411,
-      1023,
-      1304
-    ],
-    "offset": 36,
-    "selected_ids": [
-      3448,
-      3303,
-      3044,
-      3495,
-      3415,
-      2566,
-      3016,
-      3078,
-      3113,
-      2980,
-      3156,
-      3088,
-      2638,
-      2650,
-      2710,
-      3529,
-      3234,
-      1692,
-      3419,
-      939,
-      2979
-    ],
-    "selected_levels": {
-      "3448": "conditional",
-      "3303": "conditional",
-      "3044": "conditional",
-      "3495": "conditional",
-      "3415": "conditional",
-      "2566": "conditional",
-      "3016": "conditional",
-      "3078": "conditional",
-      "3113": "conditional",
-      "2980": "conditional",
-      "3156": "conditional",
-      "3088": "conditional",
-      "2638": "conditional",
-      "2650": "conditional",
-      "2710": "conditional",
-      "3529": "conditional",
-      "3234": "conditional",
-      "1692": "conditional",
-      "3419": "conditional",
-      "939": "conditional",
-      "2979": "conditional"
-    }
-  }
+  ]
 }
