@@ -2,7 +2,23 @@
   "schema_version": 1,
   "last_update_id": 272838698,
   "users_days": {},
-  "queue": [],
+  "queue": [
+    {
+      "id": 272838961,
+      "topic": "Грантові та інші можливості; для некомерційних організацій; сфери: Освіта та наука; в Україні",
+      "requested_at": "2026-10-27T19:36:16.387Z",
+      "facets": {
+        "audience": "nonprofit",
+        "sectors": [
+          "education"
+        ],
+        "custom_sector": "",
+        "geo": "ukraine",
+        "region": "",
+        "detail": ""
+      }
+    }
+  ],
   "published": [
     {
       "id": 272838672,
@@ -815,7 +831,8 @@
     272838887,
     272838915,
     272838929,
-    272838950
+    272838950,
+    272838961
   ],
   "no_results": [
     {
