@@ -1,14 +1,6 @@
 name: Telegram Public Comments Archive
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'telegram_comments.py'
-      - 'tests/test_telegram_comments.py'
-      - '.github/workflows/telegram-comments.yml'
-  schedule:
-    - cron: '27 4 * * *'
   workflow_dispatch:
     inputs:
       full_sync:
