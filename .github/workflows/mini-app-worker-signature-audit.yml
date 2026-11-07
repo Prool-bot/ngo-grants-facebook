@@ -1,0 +1,25 @@
+name: NGO Grants Mini App — one-time read-only Worker signature report
+
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/mini-app-worker-signature-audit.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    env:
+      CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
+      CF_WORKER_ACCOUNT_ID: ${{ secrets.CF_WORKER_ACCOUNT_ID }}
+      CF_WORKER_API_TOKEN: ${{ secrets.CF_WORKER_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+      - name: Read only source metadata, no code or secret logging
+        run: python scripts/mini_app_live_worker_signature_audit.py
