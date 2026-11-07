@@ -5,6 +5,7 @@ on:
     paths:
       - "mini-app/**"
       - "worker/mini_app_verify_init_data.mjs"
+      - "worker/mini_app_order_endpoint.mjs"
       - ".github/workflows/mini-app-ci.yml"
   workflow_dispatch:
 
@@ -25,6 +26,7 @@ jobs:
           node --check mini-app/schema.js
           node --check mini-app/app.js
           node --check worker/mini_app_verify_init_data.mjs
+          node --check worker/mini_app_order_endpoint.mjs
       - name: Verify schema and isolated preview safety
         run: node --test mini-app/tests/*.test.cjs mini-app/tests/*.test.mjs
       - name: Publish preview files as CI artifact, not a public deployment
