@@ -1167,7 +1167,8 @@
     272838991,
     272839001,
     272839016,
-    272839033
+    272839033,
+    272839046
   ],
   "no_results": [
     {
@@ -1227,6 +1228,28 @@
       },
       "published_on": "2026-10-20",
       "channel_url": "https://t.me/ngo_grants/3355"
+    },
+    {
+      "id": 272839046,
+      "topic": "Соціальні послуги для людей похилого віку та осіб з інвалідністю; для некомерційних організацій; сфери: Соціальна та гуманітарна сфера; в Україні",
+      "reason": "no_candidate",
+      "engine_version": 11,
+      "checked_on": "2026-11-07",
+      "status": "published",
+      "facets": {
+        "audience": "nonprofit",
+        "sectors": [
+          "social"
+        ],
+        "custom_sector": "",
+        "geo": "ukraine",
+        "region": "",
+        "detail": "Соціальні послуги для людей похилого віку та осіб з інвалідністю",
+        "applicant_role": "lead",
+        "funding_format": "grant_only"
+      },
+      "published_on": "2026-11-07",
+      "channel_url": "https://t.me/ngo_grants/3803"
     }
   ]
 }
