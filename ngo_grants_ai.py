@@ -4268,6 +4268,18 @@ def resume_v59_delivery(state: dict, entry: dict,
         return False
     if any(d.get("status") not in ("prepared", "sent") for d in docs):
         raise RuntimeError("Неприпустимий стан документа v5.9")
+    tier_deadlines = meta.get("deadlines_by_tier")
+    if not isinstance(tier_deadlines, dict):
+        raise RuntimeError("Відсутня заморожена перевірка дедлайнів v5.9")
+    for doc in docs:
+        if doc.get("status") != "prepared":
+            continue
+        frozen = tier_deadlines.get(doc["tier"])
+        if not isinstance(frozen, list) or not frozen:
+            raise RuntimeError("Немає підтверджених строків для незавершеного PDF")
+        for raw in frozen:
+            if raw is not None and date.fromisoformat(raw) < now.astimezone(KYIV).date():
+                raise RuntimeError("Грант у PDF вже закрито; продовження доставки заблоковано")
     for doc in docs:
         pdf_path = Path(doc["path"])
         if not pdf_path.is_file():
@@ -4564,6 +4576,10 @@ def make_one_catalog(state: dict, rows: list[dict], *, dry_run=False) -> bool:
             "pdf_sha256": {
                 doc["tier"]: hashlib.sha256(Path(doc["path"]).read_bytes()).hexdigest()
                 for doc in docs
+            },
+            "deadlines_by_tier": {
+                tier: [row.get("_deadline") for row in group]
+                for tier, group, _ in groups
             },
         }
         manifest = ensure_delivery(state, order_id=int(entry["id"]),
