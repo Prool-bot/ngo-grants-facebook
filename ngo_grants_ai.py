@@ -2954,12 +2954,15 @@ def show_catalogs(chat_id: int, state: dict) -> None:
     for item in published:
         title = escape(str(item.get("title", "Тематичний каталог"))[:120])
         urls = item.get("channel_urls") or [item.get("channel_url", "")]
-        labels = ("📗 Підтверджені", "📙 Умовні")
+        tier_labels = {"direct":"📗 Підтверджені","conditional":"📙 Умовні"}
+        tiers = item.get("channel_tiers") or []
         for position, candidate in enumerate(urls):
             url = str(candidate or "")
             if re.fullmatch(r"https://t\.me/ngo_grants/\d+", url):
-                suffix = (" — " + labels[position] if
-                          item.get("channel_urls") and position < len(labels) else "")
+                tier = tiers[position] if position < len(tiers) else (
+                    ("direct","conditional")[position] if
+                    item.get("channel_urls") and position < 2 else "")
+                suffix = (" — " + tier_labels[tier] if tier in tier_labels else "")
                 lines.append(f'• <a href="{url}">{title}{suffix}</a>')
     lines.append("\nОберіть каталог і відкрийте PDF безпосередньо у каналі.")
     message(chat_id, "\n".join(lines), reply_markup=UI_KEYBOARD, formatted=True)
@@ -4432,6 +4435,7 @@ def make_one_catalog(state: dict, rows: list[dict], *, dry_run=False) -> bool:
             "id": entry["id"], "topic": query, "title": title,
             "channel_url": f"https://t.me/{CHANNEL}/{message_ids[0]}",
             "channel_urls": [f"https://t.me/{CHANNEL}/{m}" for m in message_ids],
+            "channel_tiers": [doc["tier"] for doc in docs],
             "pdf": docs[0]["path"],
             "pdfs": [doc["path"] for doc in docs],
             "post_ids": [int(row["id"])
