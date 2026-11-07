@@ -20,9 +20,14 @@ def companion_markup(documents: list[dict], channel: str) -> dict | None:
     if documents[0]["tier"] != "direct":
         raise RuntimeError("Першим документом має бути підтверджений каталог")
     companion = documents[1]
+    if channel.startswith("-100") and channel[4:].isdigit():
+        # Private Telegram channel links use /c/<numeric-id> and have no @handle.
+        url = f"https://t.me/c/{channel[4:]}/{companion['message_id']}"
+    else:
+        url = f"https://t.me/{channel.lstrip('@')}/{companion['message_id']}"
     return {"inline_keyboard": [[{
         "text": "📙 Переглянути умовні можливості",
-        "url": f"https://t.me/{channel}/{companion['message_id']}",
+        "url": url,
     }]]}
 
 

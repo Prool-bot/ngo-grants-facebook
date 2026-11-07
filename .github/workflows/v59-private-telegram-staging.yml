@@ -1,0 +1,55 @@
+name: NGO Grants v5.9 — PRIVATE Telegram staging ONLY
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'preflight = read-only permissions; send = 2 synthetic PDF to PRIVATE TEST CHANNEL'
+        required: true
+        type: choice
+        default: preflight
+        options:
+          - preflight
+          - send
+      confirmation:
+        description: 'For send ONLY, type CONFIRM_PRIVATE_TEST_ONLY; no production data'
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ngo-grants-v59-private-telegram-staging
+  cancel-in-progress: false
+
+jobs:
+  private_staging:
+    runs-on: ubuntu-latest
+    timeout-minutes: 7
+    env:
+      V59_TEST_BOT_TOKEN: ${{ secrets.V59_TEST_BOT_TOKEN }}
+      V59_TEST_CHANNEL_ID: ${{ secrets.V59_TEST_CHANNEL_ID }}
+      V59_STAGING_MODE: ${{ inputs.mode }}
+      V59_STAGING_CONFIRMATION: ${{ inputs.confirmation }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install isolated test PDF dependencies
+        run: python -m pip install reportlab==4.4.9 pypdf==5.9.0
+      - name: Check mandatory private-test safeguards
+        shell: bash
+        run: |
+          if [ "$V59_STAGING_MODE" = "send" ] && [ "$V59_STAGING_CONFIRMATION" != "CONFIRM_PRIVATE_TEST_ONLY" ]; then
+            echo "BLOCKED: explicit private-test confirmation missing"
+            exit 1
+          fi
+          if [ "$V59_STAGING_MODE" != "send" ] && [ "$V59_STAGING_MODE" != "preflight" ]; then
+            echo "BLOCKED: unknown staging mode"
+            exit 1
+          fi
+      - name: Private test bot/channel preflight or explicitly confirmed staging send
+        shell: bash
+        run: python scripts/v59_private_telegram_staging.py --mode "$V59_STAGING_MODE" --confirm "$V59_STAGING_CONFIRMATION"

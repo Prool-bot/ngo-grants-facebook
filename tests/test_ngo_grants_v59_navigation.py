@@ -16,6 +16,11 @@ class NavigationTests(unittest.TestCase):
                          markup["inline_keyboard"][0][0]["url"])
         self.assertIn("умовні",markup["inline_keyboard"][0][0]["text"].lower())
 
+    def test_private_channel_numeric_link(self):
+        markup=companion_markup(docs(),"-1001234567890")
+        self.assertEqual("https://t.me/c/1234567890/8122",
+                         markup["inline_keyboard"][0][0]["url"])
+
     def test_link_once_and_persist_confirmation(self):
         edit=Mock();save=Mock()
         self.assertTrue(ensure_companion_navigation(
