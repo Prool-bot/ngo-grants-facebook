@@ -58,10 +58,10 @@ jobs:
               health = json.loads(body)
           except ValueError:
               health = {}
-          if health.get('ok') is not True or health.get('name') != 'NGO Grants Instant UI':
+          if health.get('ok') is not True or health.get('name') not in ('NGO Grants Instant UI', 'NGO Grants guided menu'):
               print('FAILED: URL points to a different Worker or version.')
               sys.exit(1)
-          print('Worker identity: correct.')
+          print('Worker identity: correct.')\n          print('Current menu version:', health.get('menu_version', 'legacy'))
 
           status, _, _ = read('/internal/pending')
           print('GET /internal/pending (without key): HTTP', status)
