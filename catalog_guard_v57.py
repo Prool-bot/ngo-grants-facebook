@@ -67,6 +67,11 @@ def applicant_evidence(post: str) -> str:
             captured = [line]
             for next_line in lines[i + 1:i + 16]:
                 trimmed = next_line.strip(" \t*•-–:.!?")
+                # Section icons introduce donor details unrelated to applicants.
+                # Do not read subsequent business/professional topics as a
+                # declaration that businesses may apply.
+                if re.match(r"^[🎯📝📌🔗🔎🌍💰🇺🇦🎨🧭]", next_line.strip()):
+                    break
                 if _NEXT_HEADER.search(trimmed) and len(trimmed) < 115:
                     break
                 captured.append(next_line)
