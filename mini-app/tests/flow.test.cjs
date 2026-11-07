@@ -63,7 +63,7 @@ test('role has a selected default AND visible Continue button; final step also a
  assert.equal(nodes.next.hidden,false);
  assert.equal(nodes.next.disabled,false);
  assert.equal(nodes.next.textContent,'Продовжити →');
- assert.equal(nodes.choices.children[0].aria-pressed,'true');
+ assert.equal(nodes.choices.children[0]['aria-pressed'],'true');
  next();
  assert.match(nodes.question.textContent,/фінансування/);
  assert.equal(nodes.stepLabel.textContent,'Крок 7 із 7');
@@ -79,7 +79,7 @@ test('role can be changed without unexpected advance; explicit Continue is requi
  const {nodes,option,next}=app;
  option('Партнер');
  assert.match(nodes.question.textContent,/ролі/);
- assert.equal(nodes.choices.children[1].aria-pressed,'true');
+ assert.equal(nodes.choices.children[1]['aria-pressed'],'true');
  assert.equal(nodes.next.hidden,false);
  next();
  assert.match(nodes.question.textContent,/фінансування/);
