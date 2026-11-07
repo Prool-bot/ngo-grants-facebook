@@ -33,10 +33,11 @@ jobs:
           node-version: '22'
       - name: Check module and patcher syntax
         run: |
-          python -m py_compile worker/patch_live_worker_mini_app.py worker/stage_worker_mini_app.py
+          python -m py_compile worker/patch_live_worker_mini_app.py worker/stage_worker_mini_app.py worker/build_mini_app_candidate.py
           node --check worker/mini_app_keyboard_bridge.mjs
           node --test mini-app/tests/keyboard-bridge.test.mjs
           python -m unittest discover -s tests -p 'test_mini_app_worker_patch.py' -v
+          python -m unittest discover -s tests -p 'test_mini_app_candidate_extraction.py' -v
       - name: Fetch deployed v5.8 source in memory-bound runner temp, patch and stage INACTIVE version
         shell: bash
         run: |
@@ -44,18 +45,8 @@ jobs:
           umask 077
           workdir="$(mktemp -d "${RUNNER_TEMP}/miniapp-worker.XXXXXX")"
           trap 'rm -rf "$workdir"' EXIT
-          account="${CF_WORKER_ACCOUNT_ID:-${CF_ACCOUNT_ID:-}}"
-          if [ -z "$account" ] || [ -z "${CF_WORKER_API_TOKEN:-}" ]; then
-            echo 'Missing Cloudflare deployment credentials; no source fetched'
-            exit 2
-          fi
-          curl --fail --silent --show-error --max-time 40 \
-            -H "Authorization: Bearer ${CF_WORKER_API_TOKEN}" \
-            "https://api.cloudflare.com/client/v4/accounts/${account}/workers/scripts/ngo-grants-instant-bot" \
-            --output "$workdir/current.mjs"
-          python worker/patch_live_worker_mini_app.py \
-            "$workdir/current.mjs" mini-app/preview.html \
-            worker/mini_app_keyboard_bridge.mjs > "$workdir/miniapp-patched.mjs"
+          # Cloudflare may return multipart modules; parse in memory, NEVER write the original.
+          python worker/build_mini_app_candidate.py "$workdir/miniapp-patched.mjs"
           node --check "$workdir/miniapp-patched.mjs"
           python worker/stage_worker_mini_app.py "$workdir/miniapp-patched.mjs"
           echo 'INACTIVE_STAGING_ONLY_NO_TELEGRAM_NO_D1_WRITES'
