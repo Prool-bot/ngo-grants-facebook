@@ -90,9 +90,10 @@ jobs:
           CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
           CF_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
           NGO_AI_AUTOPUBLISH: ${{ vars.NGO_AI_AUTOPUBLISH }}
-          # v5.9 dark launch: HARD OFF until an independently tested release PR.
-          # Repository variables cannot inadvertently activate the new sender.
-          NGO_GRANTS_V59_LIVE_DELIVERY: 'false'
+          # v5.9 public feedback release, authorized on 2026-11-07.
+          # To roll back safely, change this to 'false'; existing durable
+          # v59 outboxes must still be reconciled before retrying any PDF.
+          NGO_GRANTS_V59_LIVE_DELIVERY: 'true'
           NGO_BOT_GATEWAY_URL: ${{ secrets.NGO_BOT_GATEWAY_URL }}
           NGO_BOT_SYNC_SECRET: ${{ secrets.NGO_BOT_SYNC_SECRET }}
         run: python -u ngo_grants_ai.py
