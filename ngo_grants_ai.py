@@ -35,6 +35,7 @@ from catalog_guard_v57 import quality_status, clarification_questions
 from catalog_presentation_v59 import partition_reviewed_rows
 from ngo_grants_v59_delivery import ensure_delivery, deliver_documents, reconcile_document
 from ngo_grants_v59_checkpoint import durable_checkpoint
+from ngo_grants_v59_navigation import ensure_companion_navigation
 
 
 
@@ -4247,6 +4248,20 @@ def publish_pending_no_results(state: dict, *, now: datetime | None = None) -> b
 
 
 
+def link_v59_pdfs(state: dict, order_id: int,
+                  save_checkpoint) -> None:
+    """Expose the conditional PDF from the first PDF in the v5.8 Worker UI."""
+    ensure_companion_navigation(
+        state, order_id=order_id, channel=CHANNEL,
+        edit_markup=lambda message_id, markup: tg(
+            "editMessageReplyMarkup", {
+                "chat_id": "@" + CHANNEL,
+                "message_id": message_id,
+                "reply_markup": markup,
+            }),
+        save=save_checkpoint)
+
+
 def resume_v59_delivery(state: dict, entry: dict,
                         now: datetime) -> bool:
     """Resume frozen PDFs without redoing AI search or touching other orders.
@@ -4287,6 +4302,11 @@ def resume_v59_delivery(state: dict, entry: dict,
         expected_sha = meta.get("pdf_sha256", {}).get(doc["tier"])
         if not expected_sha or hashlib.sha256(pdf_path.read_bytes()).hexdigest() != expected_sha:
             raise RuntimeError("Контрольна сума PDF не відповідає маніфесту")
+    def checkpoint(current_state: dict) -> None:
+        durable_checkpoint(
+            current_state, save_local=save_state, state_path=STATE_PATH,
+            artifact_paths=[Path(d["path"]) for d in docs])
+
     if all(doc.get("status") == "sent" for doc in docs):
         # Completing bookkeeping does not send new Telegram messages and must
         # be allowed even if today's publication limit has since been reached.
@@ -4296,6 +4316,7 @@ def resume_v59_delivery(state: dict, entry: dict,
                 RuntimeError("Повторне надсилання завершеного PDF заборонено")),
             save=lambda _: (_ for _ in ()).throw(
                 RuntimeError("Завершення не повинно змінювати документ")))
+        link_v59_pdfs(state, order_id, checkpoint)
         finalize_v59_order(state, entry, manifest, ids, now)
         return True
     # Never exceed the message quota even after a runner restart. Previously
@@ -4316,14 +4337,11 @@ def resume_v59_delivery(state: dict, entry: dict,
         print("v5.9: відкладено продовження — недостатньо місць у денному ліміті.")
         return False
 
-    def checkpoint(current_state: dict) -> None:
-        durable_checkpoint(
-            current_state, save_local=save_state, state_path=STATE_PATH,
-            artifact_paths=[Path(d["path"]) for d in docs])
     _, message_ids = deliver_documents(
         state, order_id=order_id,
         send=lambda path, caption: upload_pdf(Path(path), caption),
         save=checkpoint)
+    link_v59_pdfs(state, order_id, checkpoint)
     finalize_v59_order(state, entry, manifest, message_ids, now)
     return True
 
@@ -4606,6 +4624,7 @@ def make_one_catalog(state: dict, rows: list[dict], *, dry_run=False) -> bool:
             save=checkpoint)
         if not complete:
             return False
+        link_v59_pdfs(state, int(entry["id"]), checkpoint)
         finalize_v59_order(state, entry, manifest, message_ids, now)
         return True
     if not picked:
