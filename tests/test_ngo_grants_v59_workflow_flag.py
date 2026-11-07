@@ -5,9 +5,9 @@ from pathlib import Path
 WORKFLOW = Path(__file__).resolve().parents[1] / ".github/workflows/ngo-grants-ai.yml"
 
 class ProductionFlagTests(unittest.TestCase):
-    def test_live_delivery_hard_disabled_in_current_workflow(self):
+    def test_live_delivery_explicit_for_public_feedback_release(self):
         code = WORKFLOW.read_text(encoding="utf-8")
-        self.assertIn("NGO_GRANTS_V59_LIVE_DELIVERY: 'false'",code)
+        self.assertIn("NGO_GRANTS_V59_LIVE_DELIVERY: 'true'",code)
         self.assertNotIn("vars.NGO_GRANTS_V59_LIVE_DELIVERY",code)
 
     def test_checkout_is_main_for_durable_checkpoint(self):
