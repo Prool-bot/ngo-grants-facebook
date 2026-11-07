@@ -1,0 +1,35 @@
+name: NGO Grants Worker v5.8 — guarded canary release
+
+on:
+  push:
+    branches: [feature/worker-menu-v58]
+    paths: ['.github/workflows/worker-menu-v58-release.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ngo-grants-worker-production-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: 0.01% canary + override smoke + automatic rollback
+    runs-on: ubuntu-latest
+    timeout-minutes: 7
+    environment: {}
+    env:
+      CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
+      CF_WORKER_ACCOUNT_ID: ${{ secrets.CF_WORKER_ACCOUNT_ID }}
+      CF_WORKER_API_TOKEN: ${{ secrets.CF_WORKER_API_TOKEN }}
+      NGO_BOT_GATEWAY_URL: ${{ secrets.NGO_BOT_GATEWAY_URL }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Verify rollback/release script
+        run: python -m py_compile worker/deploy_worker_v58.py
+      - name: Deploy v5.8 with traffic safety checks
+        run: python worker/deploy_worker_v58.py
