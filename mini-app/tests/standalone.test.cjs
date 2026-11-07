@@ -12,5 +12,7 @@ test('standalone preview includes local image, CSS and complete working JS',()=>
  assert.match(html,/position:sticky/);
  assert.match(html,/Це окремий прототип/);
  assert.doesNotMatch(html,/<script[^>]+src=|<link[^>]+href=/);
- assert.doesNotMatch(html,/\bfetch\s*\(|sendData\s*\(/);
+ assert.doesNotMatch(html,/\\bfetch\\s*\\(/);
+ assert.match(html,/data-native-send="false"/);
+ assert.match(html,/const live=root\\.dataset\\.nativeSend==='true'/);
 });
