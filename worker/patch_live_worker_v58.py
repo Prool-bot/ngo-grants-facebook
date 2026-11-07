@@ -160,7 +160,7 @@ async function advanceAfterDetail(env,d){
    buttons=[[['💶 Гранти / проєктне фінансування','fund:grant_only']],
             [['🌐 Усі види підтримки','fund:any']],back];
 '''
-    put_once("  }else if(d.stage==='confirm'){", render_insert+"  }else if(d.stage==='confirm'){", 'new screens')
+    put_once("}else if(d.stage==='confirm'){", render_insert+"}else if(d.stage==='confirm'){", 'new screens')
 
     put_once(
         "region:'geo',detail:'geo',write:'detail',confirm:'detail'};",
@@ -189,8 +189,8 @@ async function advanceAfterDetail(env,d){
    const v=data.slice(5);if(!['grant_only','any'].includes(v))return;
    d.funding_format=v;d.stage='confirm';
 '''
-    put_once("  }else if(data==='edit'&&d.stage==='confirm'){",
-             handlers+"  }else if(data==='edit'&&d.stage==='confirm'){",
+    put_once("}else if(data==='edit'&&d.stage==='confirm'){",
+             handlers+"}else if(data==='edit'&&d.stage==='confirm'){",
              'new actions')
     put_once("d.detail='';d.stage='confirm';", "d.detail='';await advanceAfterDetail(env,d);", 'no detail path')
     put_once("d.detail=value;d.stage='confirm';", "d.detail=value;await advanceAfterDetail(env,d);", 'text detail path')
