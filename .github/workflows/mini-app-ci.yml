@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - "mini-app/**"
+      - "worker/mini_app_verify_init_data.mjs"
       - ".github/workflows/mini-app-ci.yml"
   workflow_dispatch:
 
@@ -23,8 +24,9 @@ jobs:
         run: |
           node --check mini-app/schema.js
           node --check mini-app/app.js
+          node --check worker/mini_app_verify_init_data.mjs
       - name: Verify schema and isolated preview safety
-        run: node --test mini-app/tests/*.test.cjs
+        run: node --test mini-app/tests/*.test.cjs mini-app/tests/*.test.mjs
       - name: Publish preview files as CI artifact, not a public deployment
         uses: actions/upload-artifact@v4
         with:
