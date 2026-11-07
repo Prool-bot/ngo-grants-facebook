@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="uk">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="color-scheme" content="light">
+  <title>NGO Grants AI — грантовий помічник</title>
+  <meta name="description" content="Оформлення тематичного грантового каталогу за допомогою NGO Grants AI">
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+<main class="shell" id="miniApp">
+  <header class="header">
+    <div class="brand"><span class="brand-icon" aria-hidden="true">✦</span><span>NGO Grants AI</span></div>
+    <span class="mode" id="mode">Демонстрація · без надсилання</span>
+  </header>
+  <div class="progress-bar" role="progressbar" aria-label="Прогрес анкети" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="progress"><div id="progressFill"></div></div>
+  <section class="intro" aria-label="Запитання помічника">
+    <div class="robot-box">
+      <img id="robot" class="robot" src="./assets/mascot.svg" alt="Білий робот NGO Grants AI з усмішкою" width="200" height="200">
+    </div>
+    <div class="speech">
+      <span class="step" id="stepLabel">Крок 1 з 7</span>
+      <h1 id="question">Хто подаватиме заявку?</h1>
+      <p id="hint">Оберіть тип заявника, щоб ми врахували вимоги конкурсів.</p>
+    </div>
+  </section>
+  <section class="form-area" id="formArea" aria-label="Параметри пошуку">
+    <div class="choices" id="choices"></div>
+    <form class="extra" id="extra" hidden>
+      <label for="extraInput" id="extraLabel">Уточніть відповідь</label>
+      <input id="extraInput" autocomplete="off" maxlength="180" placeholder="Напишіть уточнення">
+      <button type="submit" class="primary">Продовжити</button>
+    </form>
+    <p id="error" class="error" role="status" aria-live="polite"></p>
+    <div id="summary" class="summary" hidden></div>
+  </section>
+  <footer class="footer">
+    <button type="button" class="secondary" id="back" disabled>← Назад</button>
+    <button type="button" class="primary" id="next" hidden>Далі →</button>
+    <button type="button" class="secondary" id="reset">Почати спочатку</button>
+  </footer>
+  <p class="disclaimer" id="disclaimer">Це окремий прототип. Реальні замовлення та запити до Telegram/Cloudflare не надсилаються. Обмеження основного бота залишаються чинними.</p>
+</main>
+<script src="./app.js" defer></script>
+</body>
+</html>
