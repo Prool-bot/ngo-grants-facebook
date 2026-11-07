@@ -3381,17 +3381,15 @@ def pdf_catalog(path: Path, title: str, topic: str, rows: list[dict], stamp: dat
             return row['_v41_card_fields']
         fields = catalog_card_fields(row.get('text', ''))
         if row.get('_relevance') == 'conditional':
-            # Never erase original warnings (submission fees, exclusions, etc.).
-            caution = ('Пряма заявка обраного типу заявника не підтверджена. '
-                       'Перевірте вимоги до заявника та можливість співпраці.')
+            # Explain the ACTUAL unresolved condition; do not falsely state
+            # applicant ineligibility when only beneficiary scope is uncertain.
+            caution = (str(row.get('_conditional_reason') or '').strip()
+                       or 'Перевірте додаткові умови участі перед поданням.')
             previous = fields['warning']
             if previous == 'Перед поданням перевірте чинні правила.':
                 fields['warning'] = caution
             else:
                 fields['warning'] = previous + ' ' + caution
-        if row.get('_conditional_reason'):
-            fields['warning'] = (fields['warning'] + ' '
-                                 + str(row['_conditional_reason']))
         if row.get('_deadline_note'):
             fields['warning'] = fields['warning'] + ' ' + row['_deadline_note']
 
