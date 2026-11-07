@@ -1,0 +1,37 @@
+name: NGO Grants Mini App — verify dormant Worker without deployment
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/mini-app-verify-staged.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: ngo-grants-worker-production-deploy
+  cancel-in-progress: false
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    env:
+      CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
+      CF_WORKER_ACCOUNT_ID: ${{ secrets.CF_WORKER_ACCOUNT_ID }}
+      CF_WORKER_API_TOKEN: ${{ secrets.CF_WORKER_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Verify staged version and run true Worker offline tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          workdir="$(mktemp -d "${RUNNER_TEMP}/miniapp-acceptance.XXXXXX")"
+          trap 'rm -rf "$workdir"' EXIT
+          python worker/verify_staged_mini_app.py "$workdir/miniapp-live-candidate.mjs"
+          node --check "$workdir/miniapp-live-candidate.mjs"
+          node tests/test_worker_menu_v58.mjs "$workdir/miniapp-live-candidate.mjs"
+          node tests/test_mini_app_worker_mock.mjs "$workdir/miniapp-live-candidate.mjs"
+          echo "STAGED_WORKER_ACCEPTANCE_PASSED_NO_DEPLOYMENT"
