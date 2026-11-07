@@ -28,7 +28,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Offline unit tests: preserve commands and never duplicate channel posts
+      - name: Offline unit tests — preserve commands and never duplicate channel posts
         run: |
           python -m py_compile scripts/mini_app_public_launch.py scripts/mini_app_public_preflight.py
           python -m unittest discover -s tests -p 'test_mini_app_public*.py' -v
