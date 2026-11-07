@@ -4024,13 +4024,40 @@ def notify_gateway(state: dict) -> None:
 
 
 
-def can_publish(state: dict, now: datetime) -> bool:
+def publication_slots_used(state: dict, now: datetime) -> int:
+    """Count published PDFs AND unresolved outgoing documents for this Kyiv day.
+
+    A Telegram timeout can still mean a successful upload, so 'sending'
+    consumes one conservative slot until an operator reconciles it.
+    """
     local_day = now.astimezone(KYIV).date().isoformat()
-    today_count = sum(
-        int(x.get("v59_document_count") or 1)
-        for x in state.get("published", [])
-        if x.get("published_on") == local_day
+    completed_ids = {str(p.get("id")) for p in state.get("published", [])
+                     if p.get("v59_document_count")}
+    count = sum(
+        int(item.get("v59_document_count") or 1)
+        for item in state.get("published", [])
+        if item.get("published_on") == local_day
     )
+    for order_id, entry in state.get("v59_deliveries", {}).items():
+        if str(order_id) in completed_ids:
+            continue
+        for doc in entry.get("documents", []):
+            if doc.get("status") not in ("sending", "sent"):
+                continue
+            try:
+                started = datetime.fromisoformat(doc["started_at"])
+                if started.tzinfo is None:
+                    continue
+                if started.astimezone(KYIV).date().isoformat() == local_day:
+                    count += 1
+            except (KeyError, ValueError, TypeError):
+                # Corrupt timestamp in an in-flight delivery blocks publication.
+                return MAX_PER_DAY
+    return count
+
+
+def can_publish(state: dict, now: datetime) -> bool:
+    today_count = publication_slots_used(state, now)
     if today_count >= MAX_PER_DAY:
         return False
     last = state.get("last_post_at")
@@ -4382,18 +4409,23 @@ def make_one_catalog(state: dict, rows: list[dict], *, dry_run=False) -> bool:
                    "УМОВНІ МОЖЛИВОСТІ — ПОТРІБНА ПЕРЕВІРКА")]
         groups = [part for part in groups if part[1]]
         today_str = now.astimezone(KYIV).date().isoformat()
-        used_today = sum(
-            int(item.get("v59_document_count") or 1)
-            for item in state.get("published", [])
-            if item.get("published_on") == today_str
-        )
-        # Never initiate a two-file order if only one publishing slot remains.
+        used_today = publication_slots_used(state, now)
+        # The current order's already reserved documents are included above.
         manifest_existing = state.get("v59_deliveries", {}).get(str(entry["id"]))
-        already_sent = sum(
-            item.get("status") == "sent"
-            for item in manifest_existing.get("documents", [])
-        ) if manifest_existing else 0
-        if used_today + len(groups) - already_sent > MAX_PER_DAY:
+        reserved_here = 0
+        if manifest_existing:
+            for doc in manifest_existing.get("documents", []):
+                if doc.get("status") not in ("sending", "sent"):
+                    continue
+                try:
+                    started = datetime.fromisoformat(doc["started_at"])
+                    if started.tzinfo is not None and (
+                            started.astimezone(KYIV).date().isoformat() == today_str):
+                        reserved_here += 1
+                except (KeyError, ValueError, TypeError):
+                    print("v5.9: пошкоджено час резервування доставки.")
+                    return False
+        if used_today + len(groups) - reserved_here > MAX_PER_DAY:
             print("v5.9: недостатньо доступних слотів для повної доставки.")
             return False
         slug59 = f"ngo_grants_v59_order_{int(entry['id'])}"
