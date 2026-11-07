@@ -18,7 +18,6 @@ jobs:
     name: 0.01% canary + override smoke + automatic rollback
     runs-on: ubuntu-latest
     timeout-minutes: 7
-    environment: {}
     env:
       CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
       CF_WORKER_ACCOUNT_ID: ${{ secrets.CF_WORKER_ACCOUNT_ID }}
