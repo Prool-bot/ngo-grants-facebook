@@ -4287,6 +4287,17 @@ def resume_v59_delivery(state: dict, entry: dict,
         expected_sha = meta.get("pdf_sha256", {}).get(doc["tier"])
         if not expected_sha or hashlib.sha256(pdf_path.read_bytes()).hexdigest() != expected_sha:
             raise RuntimeError("Контрольна сума PDF не відповідає маніфесту")
+    if all(doc.get("status") == "sent" for doc in docs):
+        # Completing bookkeeping does not send new Telegram messages and must
+        # be allowed even if today's publication limit has since been reached.
+        _, ids = deliver_documents(
+            state, order_id=order_id,
+            send=lambda *_: (_ for _ in ()).throw(
+                RuntimeError("Повторне надсилання завершеного PDF заборонено")),
+            save=lambda _: (_ for _ in ()).throw(
+                RuntimeError("Завершення не повинно змінювати документ")))
+        finalize_v59_order(state, entry, manifest, ids, now)
+        return True
     # Never exceed the message quota even after a runner restart. Previously
     # started documents already reserve their own slot.
     quota = publication_slots_used(state, now)
