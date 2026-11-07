@@ -32,6 +32,7 @@ import urllib.parse
 import urllib.request
 from zoneinfo import ZoneInfo
 from catalog_guard_v57 import quality_status, clarification_questions
+from catalog_presentation_v59 import partition_reviewed_rows
 
 
 
@@ -3388,6 +3389,9 @@ def pdf_catalog(path: Path, title: str, topic: str, rows: list[dict], stamp: dat
                 fields['warning'] = caution
             else:
                 fields['warning'] = previous + ' ' + caution
+        if row.get('_conditional_reason'):
+            fields['warning'] = (fields['warning'] + ' '
+                                 + str(row['_conditional_reason']))
         if row.get('_deadline_note'):
             fields['warning'] = fields['warning'] + ' ' + row['_deadline_note']
 
@@ -4321,6 +4325,28 @@ def make_one_catalog(state: dict, rows: list[dict], *, dry_run=False) -> bool:
     ])
     picked.sort(key=lambda row: (row["_relevance"] != "direct", -row["_score"],
                                  row.get("_deadline") or "9999-12-31"))
+    # v5.9 isolated preview. Never publish or mutate order state in this path.
+    # Intentionally opt-in to preserve the operational v5.7/v5.8 contract.
+    if dry_run and os.getenv("NGO_GRANTS_V59_PREVIEW") == "1":
+        direct_rows, conditional_rows = partition_reviewed_rows(
+            picked, facets, as_of=now.astimezone(KYIV).date())
+        preview_slug = (f"ngo_grants_v59_preview_"
+                        f"{now.astimezone(KYIV).strftime('%Y%m%d')}_{entry['id']}")
+        PDF_DIR.mkdir(parents=True, exist_ok=True)
+        for tier, group, suffix in (
+                ("ПІДТВЕРДЖЕНІ ГРАНТИ", direct_rows, "direct"),
+                ("УМОВНІ МОЖЛИВОСТІ — ПОТРІБНА ПЕРЕВІРКА",
+                 conditional_rows, "conditional")):
+            if not group:
+                continue
+            preview_pdf = PDF_DIR / (preview_slug + "_" + suffix + ".pdf")
+            pdf_catalog(preview_pdf, tier + ": " + title, query, group,
+                        now.astimezone(KYIV).date(), facets=facets)
+            print("v5.9 preview:", tier, preview_pdf, "записів:", len(group))
+        print("v5.9 preview підсумок: прямі=", len(direct_rows),
+              "умовні=", len(conditional_rows),
+              "в Telegram не опубліковано")
+        return False
     if not picked:
         mark_no_results(state, entry, 'none_verified')
         state["queue"].pop(0)
