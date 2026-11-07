@@ -44,10 +44,10 @@ jobs:
           lines=source.splitlines()
           print('TOTAL_LINES',len(lines))
           patterns=[
-            r'(?:^|\\b)(?:export|function|async|class|switch|case|const|let)\\s',
+            r'(?:^|\b)(?:export|function|async|class|switch|case|const|let)\s',
             r'callback_query|callback_data|inline_keyboard|reply_markup',
-            r'\\b(?:draft|sectors|audience|geo|detail|region|confirm|step|AI|D1|menu|request)\\b',
-            r'\\.prepare\\(|\\.exec\\(|getChat|/start|/help|fetch\\(',
+            r'\b(?:draft|sectors|audience|geo|detail|region|confirm|step|AI|D1|menu|request)\b',
+            r'\.prepare\(|\.exec\(|getChat|/start|/help|fetch\(',
           ]
           regex=re.compile('|'.join(patterns),re.I)
           matched=[]
@@ -62,8 +62,8 @@ jobs:
           # credential-related lines, any candidate private numbers, or URLs.
           scrubbed=re.compile(
               r'token|secret|authorization|bearer|password|private.key|'
-              r'(?:https?://)|(?:\\b\\d{11,15}\\b)|'
-              r'(?:[a-z0-9._%+-]+@[a-z0-9.-]+\\.[a-z]{2,})',re.I)
+              r'(?:https?://)|(?:\b\d{11,15}\b)|'
+              r'(?:[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,})',re.I)
           for i in sorted(windows)[:350]:
               line=lines[i]
               if scrubbed.search(line):
