@@ -1,0 +1,30 @@
+name: NGO Grants v5.9 — read-only Cloudflare contract audit
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/v59-worker-contract-audit.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  read_only_contract:
+    name: Inspect deployed v5.8 Worker source without publishing or exposing source
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    env:
+      CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
+      CF_WORKER_ACCOUNT_ID: ${{ secrets.CF_WORKER_ACCOUNT_ID }}
+      CF_WORKER_API_TOKEN: ${{ secrets.CF_WORKER_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Compile read-only script
+        run: python -m py_compile scripts/v59_worker_source_readonly_audit.py
+      - name: Inspect deployed Worker without changing production
+        run: python scripts/v59_worker_source_readonly_audit.py
