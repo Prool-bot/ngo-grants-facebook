@@ -4018,7 +4018,11 @@ def notify_gateway(state: dict) -> None:
 
 def can_publish(state: dict, now: datetime) -> bool:
     local_day = now.astimezone(KYIV).date().isoformat()
-    today_count = sum(x.get("published_on") == local_day for x in state.get("published", []))
+    today_count = sum(
+        int(x.get("v59_document_count") or 1)
+        for x in state.get("published", [])
+        if x.get("published_on") == local_day
+    )
     if today_count >= MAX_PER_DAY:
         return False
     last = state.get("last_post_at")
