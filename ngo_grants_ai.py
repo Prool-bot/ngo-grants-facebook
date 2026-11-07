@@ -4247,6 +4247,96 @@ def publish_pending_no_results(state: dict, *, now: datetime | None = None) -> b
 
 
 
+def resume_v59_delivery(state: dict, entry: dict,
+                        now: datetime) -> bool:
+    """Resume frozen PDFs without redoing AI search or touching other orders.
+
+    An ambiguous 'sending' remains frozen until operator reconciliation.
+    PDF bytes and document metadata are verified before any remaining send.
+    """
+    order_id = int(entry["id"])
+    manifest = state.get("v59_deliveries", {}).get(str(order_id))
+    if not manifest:
+        return False
+    docs = manifest.get("documents", [])
+    meta = manifest.get("metadata") or {}
+    if (not docs or not meta.get("title") or
+            not isinstance(meta.get("post_ids"), list)):
+        raise RuntimeError("Неповний маніфест v5.9: продовження заборонено")
+    if any(d.get("status") == "sending" for d in docs):
+        print("v5.9: невизначене надсилання; потрібна ручна звірка каналу.")
+        return False
+    if any(d.get("status") not in ("prepared", "sent") for d in docs):
+        raise RuntimeError("Неприпустимий стан документа v5.9")
+    for doc in docs:
+        pdf_path = Path(doc["path"])
+        if not pdf_path.is_file():
+            raise RuntimeError("PDF відсутній у GitHub checkout; надсилання заблоковано")
+        expected_sha = meta.get("pdf_sha256", {}).get(doc["tier"])
+        if not expected_sha or hashlib.sha256(pdf_path.read_bytes()).hexdigest() != expected_sha:
+            raise RuntimeError("Контрольна сума PDF не відповідає маніфесту")
+    # Never exceed the message quota even after a runner restart. Previously
+    # started documents already reserve their own slot.
+    quota = publication_slots_used(state, now)
+    reserved_today = 0
+    for doc in docs:
+        if doc.get("status") not in ("sending", "sent"):
+            continue
+        try:
+            started = datetime.fromisoformat(doc["started_at"])
+            if started.tzinfo is not None and (
+                    started.astimezone(KYIV).date() == now.astimezone(KYIV).date()):
+                reserved_today += 1
+        except (ValueError, KeyError, TypeError):
+            raise RuntimeError("Не можна перевірити час відправлення")
+    if quota + len(docs) - reserved_today > MAX_PER_DAY:
+        print("v5.9: відкладено продовження — недостатньо місць у денному ліміті.")
+        return False
+
+    def checkpoint(current_state: dict) -> None:
+        durable_checkpoint(
+            current_state, save_local=save_state, state_path=STATE_PATH,
+            artifact_paths=[Path(d["path"]) for d in docs])
+    _, message_ids = deliver_documents(
+        state, order_id=order_id,
+        send=lambda path, caption: upload_pdf(Path(path), caption),
+        save=checkpoint)
+    finalize_v59_order(state, entry, manifest, message_ids, now)
+    return True
+
+
+def finalize_v59_order(state: dict, entry: dict, manifest: dict,
+                       message_ids: list[int], now: datetime) -> None:
+    """Commit one completed order to the in-memory publication ledger."""
+    meta = manifest.get("metadata") or {}
+    docs = manifest.get("documents", [])
+    if not docs or len(docs) != len(message_ids):
+        raise RuntimeError("Неможливо завершити неповну доставку")
+    if not all(doc.get("status") == "sent" for doc in docs):
+        raise RuntimeError("Завершення до підтвердження всіх PDF заборонено")
+    if int(state["queue"][0]["id"]) != int(entry["id"]):
+        raise RuntimeError("Черга замовлень змінилася під час відправлення")
+    if not any(int(p.get("id", -1)) == int(entry["id"])
+               for p in state.get("published", [])):
+        state.setdefault("published", []).append({
+            "id": entry["id"], "topic": meta["query"], "title": meta["title"],
+            "channel_url": f"https://t.me/{CHANNEL}/{message_ids[0]}",
+            "channel_urls": [f"https://t.me/{CHANNEL}/{mid}" for mid in message_ids],
+            "channel_tiers": [doc["tier"] for doc in docs],
+            "pdf": docs[0]["path"],
+            "pdfs": [doc["path"] for doc in docs],
+            "post_ids": list(meta["post_ids"]),
+            "published_on": now.astimezone(KYIV).date().isoformat(),
+            "valid_until": meta["valid_until"],
+            "v59_document_count": len(message_ids),
+            "facets": meta.get("facets"),
+        })
+    state["last_post_at"] = now.isoformat()
+    state["queue"].pop(0)
+    state.pop("ai_review", None)
+    print("v5.9: завершено доставку документів:", len(message_ids))
+
+
 def make_one_catalog(state: dict, rows: list[dict], *, dry_run=False) -> bool:
     """Review every eligible post in small AI batches across scheduled runs.
 
