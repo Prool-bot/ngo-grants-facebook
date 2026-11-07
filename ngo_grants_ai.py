@@ -517,8 +517,8 @@ def deadline_dates_from_post(text: str) -> list[date]:
     for idx, line in enumerate(raw_lines[:-1]):
         header = re.sub(r'^[^A-Za-zА-Яа-яІіЇїЄєҐґ]+', '', line).strip()
         if re.fullmatch(
-                r'(?:дедлайн|дедлайни|кінцевий\\s+термін|deadline)'
-                r'\\s*[:：]?\\s*', header, re.I):
+                r'(?:дедлайн|дедлайни|кінцевий\s+термін|deadline)'
+                r'\s*[:：]?\s*', header, re.I):
             fragments.append(header + ' ' + raw_lines[idx + 1].strip()[:180])
     # Some grants describe the deadline BEFORE the action, e.g.
     # '3 грудня 2026 — обов'язкове попереднє подання' (UPF4).
