@@ -62,6 +62,16 @@ test("no queues ever called when disabled, unsigned or missing existing queue ad
  assert.equal((await handleMiniAppOrder(req(payload({initData:"fake"})),enabled,spy)).status,401);
  assert.equal(calls,0);
 });
+test("malformed facets and cross-origin submissions are refused before enqueue",async()=>{
+ let calls=0;
+ const deps={enqueueExistingOrder:async()=>{calls++;return {status:"created",orderId:1};}};
+ const bad=await handleMiniAppOrder(req(payload({facets:{...valid,geo:"other"}})),enabled,deps);
+ assert.equal(bad.status,400);
+ const cross=req(payload());
+ cross.headers.set("origin","https://evil.example");
+ assert.equal((await handleMiniAppOrder(cross,enabled,deps)).status,403);
+ assert.equal(calls,0);
+});
 test("only server-verified Telegram identity reaches existing queue callback",async()=>{
  const calls=[];
  const deps={enqueueExistingOrder:async value=>{
