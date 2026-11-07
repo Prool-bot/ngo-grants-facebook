@@ -54,7 +54,7 @@ _PARTNER = re.compile(
     r"(?:партнер\w*|співзаявник\w*|консорціум\w*|"
     r"\bpartners?\b|co-applicant\w*|consortium)", re.I)
 _NEGATIVE = re.compile(
-    r"(?:не\s+допуска\w*|не\s+можуть\s+(?:подат|брати)|"
+    r"(?:не\s+допуска\w*|не\s+мож\w*\s+(?:пода\w*|брати)|"
     r"не\s+мають\s+права|виключа\w*|ineligible|"
     r"not\s+eligible|excluded)", re.I)
 
@@ -166,7 +166,14 @@ def applicant_status(post: str, facets: dict) -> str:
     sentences = re.split(r"[\n.;]+", eligible)
     positive = "\n".join(x for x in sentences if not _NEGATIVE.search(x))
     negative = "\n".join(x for x in sentences if _NEGATIVE.search(x))
-    ngo = bool(_NGO.search(positive))
+    # Leaders/employees OF an NGO may apply personally; that is not the
+    # NGO itself being allowed to be a project applicant.
+    organization_as_job = re.compile(
+        r"(?:керівник\w*|представник\w*|працівник\w*|співробітник\w*)"
+        r"(?:\s+\w+){0,2}\s+"
+        r"(?:громадськ\w*\s+організаці\w*|неприбутков\w*\s+організаці\w*)")
+    applicant_entities = organization_as_job.sub("особистий учасник", positive)
+    ngo = bool(_NGO.search(applicant_entities))
     business = bool(_COMPANY.search(positive))
     # "Фізична особа-підприємець" is a registered FOP, not an ordinary
     # individual applicant. Do not infer non-business eligibility from it.
