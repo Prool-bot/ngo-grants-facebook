@@ -4461,7 +4461,8 @@ def make_one_catalog(state: dict, rows: list[dict], *, dry_run=False) -> bool:
                         save=save_state)
         def checkpoint(current_state: dict) -> None:
             durable_checkpoint(current_state, save_local=save_state,
-                               state_path=STATE_PATH)
+                               state_path=STATE_PATH,
+                               artifact_paths=[Path(doc["path"]) for doc in docs])
         complete, message_ids = deliver_documents(
             state, order_id=int(entry["id"]),
             send=lambda path, caption: upload_pdf(Path(path), caption),
