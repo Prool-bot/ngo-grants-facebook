@@ -10,12 +10,13 @@ from __future__ import annotations
 import os
 from pathlib import Path
 import subprocess
-from typing import Callable
+from typing import Callable, Sequence
 
 
 def durable_checkpoint(state: dict, *, save_local: Callable[[dict], None],
                        state_path: Path, repo_root: Path | None = None,
-                       runner: Callable[..., object] = subprocess.run) -> None:
+                       runner: Callable[..., object] = subprocess.run,
+                       artifact_paths: Sequence[Path] = ()) -> None:
     """Persist to origin/main before returning; never send after failed push."""
     if os.environ.get("GITHUB_ACTIONS") != "true":
         raise RuntimeError("Доставка v5.9 дозволена лише в GitHub Actions")
@@ -38,9 +39,24 @@ def durable_checkpoint(state: dict, *, save_local: Callable[[dict], None],
         save_local(state)
         git("config", "user.name", "github-actions[bot]")
         git("config", "user.email", "41898282+github-actions[bot]@users.noreply.github.com")
-        git("add", "--", relative.as_posix())
+        staged = [relative.as_posix()]
+        for artifact in artifact_paths:
+            candidate = Path(artifact)
+            if candidate.is_absolute():
+                artifact_rel = candidate.resolve().relative_to(root)
+            else:
+                artifact_rel = candidate
+            normalized = artifact_rel.as_posix()
+            if (not normalized.startswith("ai_catalogs/pdfs/")
+                    or not normalized.endswith(".pdf")
+                    or ".." in artifact_rel.parts
+                    or not (root / artifact_rel).is_file()):
+                raise RuntimeError("Неприпустимий або відсутній PDF для durable checkpoint")
+            staged.append(normalized)
+        git("add", "--", *staged)
         changes = git("diff", "--cached", "--name-only")
-        if changes and changes != relative.as_posix():
+        staged_set = set(staged)
+        if any(p not in staged_set for p in changes.splitlines()):
             raise RuntimeError("В індексі несподівані файли; доставку заблоковано")
         if changes:
             git("commit", "-m", "Checkpoint NGO Grants v5.9 Telegram outbox")
