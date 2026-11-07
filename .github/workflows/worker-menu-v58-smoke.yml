@@ -1,0 +1,63 @@
+name: NGO Grants Worker v5.8 — staged version smoke
+
+on:
+  push:
+    branches: [feature/worker-menu-v58]
+    paths: ['.github/workflows/worker-menu-v58-smoke.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
+      CF_WORKER_ACCOUNT_ID: ${{ secrets.CF_WORKER_ACCOUNT_ID }}
+      CF_WORKER_API_TOKEN: ${{ secrets.CF_WORKER_API_TOKEN }}
+    steps:
+      - name: Confirm bindings, non-deployment, and preview health
+        shell: bash
+        run: |
+          python - <<'PY'
+          import os,json,urllib.request,urllib.error
+          from urllib.parse import urlparse
+          aid=(os.getenv('CF_WORKER_ACCOUNT_ID') or os.getenv('CF_ACCOUNT_ID') or '').strip()
+          tok=os.getenv('CF_WORKER_API_TOKEN') or ''
+          script='ngo-grants-instant-bot'
+          version='2fb799c1-7ef8-4a5e-99b2-cd46da9720e7'
+          base='https://api.cloudflare.com/client/v4/accounts/'+aid
+          def get(path):
+            req=urllib.request.Request(base+path,headers={'Authorization':'Bearer '+tok,'Accept':'application/json'})
+            with urllib.request.urlopen(req,timeout=20) as res:return json.loads(res.read(100000))
+          v=get('/workers/scripts/'+script+'/versions/'+version)
+          if not v.get('success'):raise SystemExit('VERSION_READ_FAILED')
+          obj=v.get('result') or {}
+          print('STAGED_VERSION_EXISTS',obj.get('id')==version)
+          print('VERSION_METADATA_KEYS',list(obj.keys()))
+          bindings=(obj.get('resources') or {}).get('bindings') or obj.get('bindings') or []
+          print('VERSION_BINDING_TYPES',sorted([(b.get('name'),b.get('type')) for b in bindings]))
+          d=get('/workers/scripts/'+script+'/deployments')
+          deployments=(d.get('result') or {}).get('deployments') or []
+          active=[(i.get('version_id'),i.get('percentage')) for x in deployments[:1] for i in (x.get('versions') or [])]
+          print('STAGED_VERSION_NOT_DEPLOYED',all(x[0]!=version for x in active))
+          print('DEPLOYMENT_VERSION_COUNT',len(active))
+          sub=get('/workers/subdomain')
+          name=(sub.get('result') or {}).get('subdomain') or ''
+          print('ACCOUNT_SUBDOMAIN_PRESENT',bool(name))
+          for prefix in [version.replace('-','')[:8],version[:8],version.replace('-','')]:
+            url='https://'+prefix+'-'+script+'.'+name+'.workers.dev/health'
+            req=urllib.request.Request(url,headers={'User-Agent':'Mozilla/5.0 NGOGrantsSmoke/1.0','Accept':'application/json'})
+            try:
+              with urllib.request.urlopen(req,timeout=12) as response:
+                data=json.loads(response.read(3000))
+              print('VERSION_PREVIEW_HEALTH',data.get('name'),data.get('menu_version'))
+              break
+            except urllib.error.HTTPError as e:
+              print('VERSION_PREVIEW_HTTP',prefix[:8],e.code)
+            except Exception as e:
+              print('VERSION_PREVIEW_ERROR',type(e).__name__)
+          print('SMOKE_READ_ONLY_DONE')
+          PY
