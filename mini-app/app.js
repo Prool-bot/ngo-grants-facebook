@@ -102,8 +102,39 @@ function renderSummary(){
     row.append(dt,dd);dl.append(row);}
   wrap.append(dl);
   const note=document.createElement('p');note.className='notice';
-  note.textContent='✓ Анкету сформовано локально. Для реального замовлення потрібен захищений серверний API: перевірка Telegram initData, підписки та денного ліміту. Кнопку надсилання навмисно не активовано.';
+  const live=root.dataset.nativeSend==='true';
+  note.textContent=live
+    ?'Після натискання Telegram передасть анкету боту. Він перевірить підписку та денний ліміт і підтвердить замовлення в чаті. Натискання саме по собі ще не означає прийняття.'
+    :'✓ Анкету сформовано локально. Це лише демонстрація; замовлення не надсилається.';
   wrap.append(note);
+  if(live){
+    const send=document.createElement('button');
+    send.type='button';send.className='primary';send.textContent='✅ Замовити каталог';
+    send.style.marginTop='14px';
+    const api=window.Telegram&&window.Telegram.WebApp;
+    if(!api||typeof api.sendData!=='function'){
+      send.disabled=true;
+      note.textContent='Відкрийте застосунок із кнопки Telegram-бота. Звичайний браузер не може надіслати замовлення.';
+    }else{
+      send.addEventListener('click',()=>{
+        if(send.disabled)return;
+        try{
+          const facets=schema.normalize(draft);
+          const data=JSON.stringify({type:'ngo-grants-miniapp-v1',facets});
+          if(new TextEncoder().encode(data).length>4096)
+            throw Error('Дані завеликі для Telegram');
+          send.disabled=true;
+          send.textContent='Передаємо до Telegram…';
+          api.sendData(data);
+        }catch(_){
+          send.disabled=false;
+          send.textContent='✅ Замовити каталог';
+          error('Не вдалося передати замовлення. Відкрийте застосунок через кнопку бота.');
+        }
+      });
+    }
+    wrap.append(send);
+  }
  }catch(e){error(e.message);index=Math.max(0,index-1);}
 }
 function render(){
