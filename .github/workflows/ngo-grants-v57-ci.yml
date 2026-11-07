@@ -6,6 +6,7 @@ on:
       - "ngo_grants_ai.py"
       - "catalog_guard_v57.py"
       - "tests/**"
+      - "scripts/v59_worker_readonly_smoke.py"
       - "worker/menu_refinement_v57.js"
       - ".github/workflows/ngo-grants-v57-ci.yml"
   workflow_dispatch:
@@ -57,3 +58,5 @@ jobs:
           retention-days: 7
       - name: Check menu JavaScript module syntax
         run: node --input-type=module --check < worker/menu_refinement_v57.js
+      - name: Read-only live Worker acceptance (GET only; no secrets)
+        run: python scripts/v59_worker_readonly_smoke.py
