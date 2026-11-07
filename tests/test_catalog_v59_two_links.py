@@ -16,6 +16,17 @@ class TwoLinksMenuTests(unittest.TestCase):
         self.assertIn("Підтверджені",text)
         self.assertIn("Умовні",text)
 
+    def test_only_conditional_pdf_uses_correct_label(self):
+        state={"published":[{"title":"Умовні програми",
+                             "channel_url":"https://t.me/ngo_grants/903",
+                             "channel_urls":["https://t.me/ngo_grants/903"],
+                             "channel_tiers":["conditional"]}]}
+        with patch.object(app,"message") as messenger:
+            app.show_catalogs(123,state)
+        text=messenger.call_args.args[1]
+        self.assertIn("📙 Умовні",text)
+        self.assertNotIn("📗 Підтверджені",text)
+
     def test_legacy_single_link_unaffected(self):
         state={"published":[{"title":"Звичайний каталог",
                              "channel_url":"https://t.me/ngo_grants/123"}]}
