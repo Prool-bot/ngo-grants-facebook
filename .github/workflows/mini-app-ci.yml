@@ -1,0 +1,33 @@
+name: NGO Grants AI — Mini App preview CI
+
+on:
+  pull_request:
+    paths:
+      - "mini-app/**"
+      - ".github/workflows/mini-app-ci.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  preview:
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Check JavaScript syntax
+        run: |
+          node --check mini-app/schema.js
+          node --check mini-app/app.js
+      - name: Verify schema and isolated preview safety
+        run: node --test mini-app/tests/*.test.cjs
+      - name: Publish preview files as CI artifact, not a public deployment
+        uses: actions/upload-artifact@v4
+        with:
+          name: mini-app-static-preview
+          path: mini-app/
+          retention-days: 14
