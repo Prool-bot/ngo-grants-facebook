@@ -35,7 +35,7 @@ class Tests(TestCase):
     def test_surgical_patch_retains_optional_assistant_and_old_backend(self):
         out=patchmod.patch(SOURCE)
         self.assertEqual(out.count("NGO_MINI_APP_DIRECT_START_V03"),1)
-        self.assertIn('"/start"',out if '"/start"' in out else '"/start"')
+        self.assertIn('Вітаємо в NGO Grants AI',out)
         self.assertIn('text:"/request"',out)
         self.assertIn('text:"/catalogs"',out)
         self.assertIn('/assistant',out)
