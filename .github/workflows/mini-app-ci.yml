@@ -9,6 +9,12 @@ on:
       - "worker/mini_app_keyboard_bridge.mjs"
       - "worker/patch_live_worker_mini_app.py"
       - "worker/stage_worker_mini_app.py"
+      - "worker/patch_live_worker_mini_app_start_v03.py"
+      - "worker/build_mini_app_start_v03_candidate.py"
+      - "worker/deploy_worker_mini_app_start_v03.py"
+      - "scripts/mini_app_start_v03_edit_post.py"
+      - "tests/test_mini_app_start_v03_*.py"
+      - ".github/workflows/mini-app-direct-start-v03.yml"
       - ".github/workflows/mini-app-ci.yml"
   workflow_dispatch:
 
@@ -43,6 +49,11 @@ jobs:
         run: |
           python -m unittest discover -s tests -p 'test_mini_app_nav_v02_patch.py' -v
           python -m unittest discover -s tests -p 'test_mini_app_nav_v02_release.py' -v
+      - name: Test direct Start and existing post edit before any public rollout
+        run: |
+          python -m py_compile worker/patch_live_worker_mini_app_start_v03.py worker/build_mini_app_start_v03_candidate.py worker/deploy_worker_mini_app_start_v03.py scripts/mini_app_start_v03_edit_post.py
+          python -m unittest discover -s tests -p 'test_mini_app_start_v03_*.py' -v
+          node --check tests/test_mini_app_start_direct_worker.mjs
       - name: Publish preview files as CI artifact, not a public deployment
         uses: actions/upload-artifact@v4
         with:
