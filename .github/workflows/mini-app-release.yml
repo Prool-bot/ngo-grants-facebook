@@ -1,0 +1,36 @@
+name: NGO Grants Mini App — guarded public Worker release
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/mini-app-release.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ngo-grants-worker-production-deploy
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: 0.01% canary + GET-only smoke + automatic rollback on failure
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
+      CF_WORKER_ACCOUNT_ID: ${{ secrets.CF_WORKER_ACCOUNT_ID }}
+      CF_WORKER_API_TOKEN: ${{ secrets.CF_WORKER_API_TOKEN }}
+      NGO_BOT_GATEWAY_URL: ${{ secrets.NGO_BOT_GATEWAY_URL }}
+      NGO_MINI_APP_RELEASE_APPROVED: 'YES_NATIVE_TELEGRAM_CANARY'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Compile deployment script
+        run: python -m py_compile worker/deploy_worker_mini_app.py
+      - name: Deploy only prevalidated staged version and smoke legacy+new endpoints
+        run: python worker/deploy_worker_mini_app.py
