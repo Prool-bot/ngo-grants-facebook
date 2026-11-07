@@ -1,0 +1,88 @@
+name: NGO Grants - inspect live Worker source (read only)
+
+on:
+  push:
+    branches: [feature/worker-menu-source-access-v57]
+    paths: [.github/workflows/worker-source-inspection.yml]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
+      CF_WORKER_ACCOUNT_ID: ${{ secrets.CF_WORKER_ACCOUNT_ID }}
+      CF_WORKER_API_TOKEN: ${{ secrets.CF_WORKER_API_TOKEN }}
+    steps:
+      - name: Inspect Cloudflare script metadata and exposure risk (without saving source)
+        shell: bash
+        run: |
+          python - <<'PY'
+          import os,urllib.request,urllib.error,re
+          from email.parser import BytesParser
+          from email import policy
+
+          aid=(os.getenv('CF_WORKER_ACCOUNT_ID') or os.getenv('CF_ACCOUNT_ID') or '').strip()
+          token=(os.getenv('CF_WORKER_API_TOKEN') or '').strip()
+          script='ngo-grants-instant-bot'
+          if not aid or not token:
+              print('FAILED: SCOPED_TOKEN_OR_ACCOUNT_MISSING')
+              raise SystemExit(1)
+          req=urllib.request.Request(
+              'https://api.cloudflare.com/client/v4/accounts/'+aid+'/workers/scripts/'+script,
+              headers={'Authorization':'Bearer '+token,
+                       'Accept':'application/javascript, multipart/form-data'})
+          try:
+              with urllib.request.urlopen(req,timeout=30) as resp:
+                  ct=resp.headers.get('content-type','')
+                  body=resp.read(1800000)
+                  status=resp.status
+              print('WORKER_SOURCE_HTTP',status)
+          except urllib.error.HTTPError as exc:
+              print('WORKER_SOURCE_HTTP',exc.code)
+              raise SystemExit(1)
+          except Exception as exc:
+              print('WORKER_SOURCE_NETWORK_ERROR',type(exc).__name__)
+              raise SystemExit(1)
+          if len(body)>=1800000:
+              print('FAILED: SIZE_LIMIT_EXCEEDED')
+              raise SystemExit(1)
+          print('SOURCE_BYTES',len(body))
+          print('SOURCE_MIME_CATEGORY','multipart' if 'multipart/' in ct else 'javascript')
+          sources=[]
+          if 'multipart/' in ct:
+              msg=BytesParser(policy=policy.default).parsebytes(
+                  b'MIME-Version: 1.0\r\nContent-Type: '+ct.encode()+b'\r\n\r\n'+body)
+              for part in msg.walk():
+                  name=(part.get_filename() or part.get_param('name',header='content-disposition') or '')
+                  if name.endswith(('.js','.mjs','.ts')):
+                      sources.append((name,part.get_payload(decode=True) or b''))
+          else:
+              sources.append(('worker.js',body))
+          print('SOURCE_JS_FILES',len(sources))
+          if not sources:
+              print('FAILED: CANNOT_PARSE_JS')
+              raise SystemExit(1)
+          text='\n'.join(payload.decode('utf-8','replace') for _,payload in sources)
+          print('JS_LINES',len(text.splitlines()))
+          print('MENU_CALLBACK_HANDLERS',len(re.findall(r'callback_query|callback_data|inline_keyboard',text,re.I)))
+          print('D1_REFERENCES',len(re.findall(r'\bD1\b|\.prepare\s*\(',text,re.I)))
+          print('CLIENT_STATE_REFERENCES',len(re.findall(r'\bstate\b|\bdraft\b|\bstep\b',text,re.I)))
+          print('USES_ENV_SECRET_BINDINGS',bool(re.search(r'\benv\.[A-Z_]*(?:TOKEN|SECRET|KEY)',text)))
+          findings = {
+           'telegram_token':bool(re.search(r'\b[0-9]{7,12}:[A-Za-z0-9_-]{30,}\b',text)),
+           'private_key':bool(re.search(r'-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----',text)),
+           'openai_key':bool(re.search(r'\bsk-[a-zA-Z0-9_-]{20,}',text)),
+           'personal_email':bool(re.search(r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[a-zA-Z]{2,}\b',text)),
+           'phone_number':bool(re.search(r'(?<!\d)\+?\d{11,15}(?!\d)',text)),
+           'literal_secrets':bool(re.search(r'(?i)(?<![.\w])(?:TOKEN|SECRET|API_KEY|BOT_TOKEN)\s*[:=]\s*[\"\x27][A-Za-z0-9_-]{20,}[\"\x27]',text)),
+          }
+          for name,val in findings.items():
+              print('RISK_FLAG_'+name.upper(),val)
+          print('PUBLIC_SOURCE_EXPORT_SAFE',not any(findings.values()))
+          print('READ_ONLY: no code or secrets saved, deployed, or posted.')
+          PY
