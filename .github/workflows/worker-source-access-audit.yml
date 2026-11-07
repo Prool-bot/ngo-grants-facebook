@@ -18,6 +18,7 @@ jobs:
     env:
       CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
       CF_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
+      CF_WORKER_API_TOKEN: ${{ secrets.CF_WORKER_API_TOKEN }}
       NGO_BOT_GATEWAY_URL: ${{ secrets.NGO_BOT_GATEWAY_URL }}
     steps:
       - name: Verify Cloudflare Workers Script read scope without exporting source
@@ -27,7 +28,9 @@ jobs:
           import os,json,urllib.request,urllib.error
           from urllib.parse import urlsplit
           aid=os.environ.get("CF_ACCOUNT_ID","").strip()
-          tok=os.environ.get("CF_API_TOKEN","").strip()
+          worker_token=os.environ.get("CF_WORKER_API_TOKEN","").strip()
+          tok=(worker_token or os.environ.get("CF_API_TOKEN","").strip())
+          print("WORKER_SCOPED_TOKEN_CONFIGURED", bool(worker_token))
           gate=os.environ.get("NGO_BOT_GATEWAY_URL","").strip().rstrip("/")
           if not aid or not tok:
               print("CLOUDFLARE_ACCOUNT_AND_TOKEN_MISSING")
