@@ -33,6 +33,8 @@ import urllib.request
 from zoneinfo import ZoneInfo
 from catalog_guard_v57 import quality_status, clarification_questions
 from catalog_presentation_v59 import partition_reviewed_rows
+from ngo_grants_v59_delivery import ensure_delivery, deliver_documents
+from ngo_grants_v59_checkpoint import durable_checkpoint
 
 
 
@@ -4353,6 +4355,95 @@ def make_one_catalog(state: dict, rows: list[dict], *, dry_run=False) -> bool:
               "умовні=", len(conditional_rows),
               "в Telegram не опубліковано")
         return False
+    if (not dry_run and os.getenv("NGO_GRANTS_V59_LIVE_DELIVERY") == "true"):
+        # Explicit opt-in only. The production main workflow currently leaves
+        # this unset. Durable checkpoints must be pushed before each send.
+        direct_rows, conditional_rows = partition_reviewed_rows(
+            picked, facets, as_of=now.astimezone(KYIV).date())
+        if not direct_rows and not conditional_rows:
+            mark_no_results(state, entry, 'none_verified')
+            state["queue"].pop(0)
+            state.pop("ai_review", None)
+            return True
+        groups = [("direct", direct_rows, "ПІДТВЕРДЖЕНІ ГРАНТИ"),
+                  ("conditional", conditional_rows,
+                   "УМОВНІ МОЖЛИВОСТІ — ПОТРІБНА ПЕРЕВІРКА")]
+        groups = [part for part in groups if part[1]]
+        today_str = now.astimezone(KYIV).date().isoformat()
+        used_today = sum(
+            int(item.get("v59_document_count") or 1)
+            for item in state.get("published", [])
+            if item.get("published_on") == today_str
+        )
+        # Never initiate a two-file order if only one publishing slot remains.
+        manifest_existing = state.get("v59_deliveries", {}).get(str(entry["id"]))
+        already_sent = sum(
+            item.get("status") == "sent"
+            for item in manifest_existing.get("documents", [])
+        ) if manifest_existing else 0
+        if used_today + len(groups) - already_sent > MAX_PER_DAY:
+            print("v5.9: недостатньо доступних слотів для повної доставки.")
+            return False
+        slug59 = f"ngo_grants_v59_order_{int(entry['id'])}"
+        docs = []
+        for tier, group, label in groups:
+            output = PDF_DIR / f"{slug59}_{tier}.pdf"
+            pdf_catalog(output, label + ": " + title, query, group,
+                        now.astimezone(KYIV).date(), facets=facets)
+            if tier == "direct":
+                caption = _catalog_caption(
+                    label + ": " + title, query, facets,
+                    len(group), len(group), 0)
+            else:
+                caption = _catalog_caption(
+                    label + ": " + title, query, facets,
+                    len(group), 0, len(group))
+            docs.append({"tier":tier,"path":str(output),"caption":caption})
+        # Keep file identities and selected archive IDs immutable after the
+        # first send. Any mismatched reranking stops instead of duplicating.
+        identity = [(tier, [int(row["id"]) for row in group])
+                    for tier, group, _ in groups]
+        fingerprint = hashlib.sha256(
+            json.dumps(identity, ensure_ascii=False,
+                       separators=(",", ":")).encode("utf-8")
+        ).hexdigest()
+        ensure_delivery(state, order_id=int(entry["id"]),
+                        fingerprint=fingerprint, documents=docs,
+                        save=save_state)
+        def checkpoint(current_state: dict) -> None:
+            durable_checkpoint(current_state, save_local=save_state,
+                               state_path=STATE_PATH)
+        complete, message_ids = deliver_documents(
+            state, order_id=int(entry["id"]),
+            send=lambda path, caption: upload_pdf(Path(path), caption),
+            save=checkpoint)
+        if not complete:
+            return False
+        published_entry = {
+            "id": entry["id"], "topic": query, "title": title,
+            "channel_url": f"https://t.me/{CHANNEL}/{message_ids[0]}",
+            "channel_urls": [f"https://t.me/{CHANNEL}/{m}" for m in message_ids],
+            "pdf": docs[0]["path"],
+            "pdfs": [doc["path"] for doc in docs],
+            "post_ids": [int(row["id"])
+                         for _, group, _ in groups for row in group],
+            "published_on": today_str,
+            "valid_until": (
+                (now.astimezone(KYIV).date() + timedelta(days=30)).isoformat()
+                if any(row.get("_rolling") for _, group, _ in groups for row in group)
+                else max(row["_deadline"]
+                         for _, group, _ in groups for row in group)),
+            "v59_document_count": len(message_ids),
+            "facets": facets,
+        }
+        if not any(int(p.get("id", -1)) == int(entry["id"])
+                   for p in state.get("published", [])):
+            state["published"].append(published_entry)
+        state["last_post_at"] = now.isoformat()
+        state["queue"].pop(0)
+        state.pop("ai_review", None)
+        print("v5.9: підтверджено доставку документів:", len(message_ids))
+        return True
     if not picked:
         mark_no_results(state, entry, 'none_verified')
         state["queue"].pop(0)
