@@ -71,6 +71,27 @@ class ResumeTests(unittest.TestCase):
         telegram.assert_called_once()
         self.assertEqual([],self.state["queue"])
 
+    def test_navigation_edit_timeout_resumes_without_resending_pdf(self):
+        for i,d in enumerate(self.docs):
+            d.update(status="sent", message_id=8201+i,
+                     started_at="2026-11-07T10:00:00+00:00")
+        with patch.object(app,"upload_pdf") as upload, \
+             patch.object(app,"durable_checkpoint") as checkpoint, \
+             patch.object(app,"tg",side_effect=[
+                 TimeoutError("edit reply lost"),
+                 {"ok":True,"result":{"message_id":8201}}
+             ]) as telegram:
+            with self.assertRaises(TimeoutError):
+                app.resume_v59_delivery(self.state,self.entry,NOW)
+            self.assertEqual([123],[x["id"] for x in self.state["queue"]])
+            self.assertTrue(app.resume_v59_delivery(self.state,self.entry,NOW))
+        upload.assert_not_called()
+        self.assertEqual(2,telegram.call_count)
+        checkpoint.assert_called_once()
+        self.assertEqual("linked",
+                         self.state["v59_deliveries"]["123"]["navigation_status"])
+        self.assertEqual([],self.state["queue"])
+
     def test_full_delivery_finalizes_even_with_quota_saturated(self):
         for i,d in enumerate(self.docs):
             d.update(status="sent", message_id=8301+i,
