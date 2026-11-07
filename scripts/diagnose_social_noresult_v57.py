@@ -40,7 +40,7 @@ def main():
         funnel['sector']+=1
         deadline=app.deadline_from_post(p,date(2026,11,7))
         rolling=not app.deadline_dates_from_post(p) and app.ongoing_applications_from_post(p)
-        if not deadline and not rolling:continue
+        if (deadline is not None and deadline < date(2026,11,7)) or (deadline is None and not rolling):continue
         funnel['date']+=1
         match,score=app._candidate_matches_subject(p,plan)
         if match or relaxed:
@@ -57,7 +57,7 @@ def main():
         if not app._menu_geography_eligible(p,f):continue
         if quality_status(p,f)=='reject':continue
         deadline=app.deadline_from_post(p,date(2026,11,7))
-        if not deadline and not app.ongoing_applications_from_post(p):continue
+        if (deadline is not None and deadline < date(2026,11,7)) or (deadline is None and not app.ongoing_applications_from_post(p)):continue
         relevant.append((row['id'],str(deadline),p.splitlines()[0][:125],
                          app._menu_sector_eligible(p,f),
                          app._candidate_matches_subject(p,plan)[0]))
