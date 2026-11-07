@@ -1,0 +1,21 @@
+name: NGO Grants - Diagnose social services false negative
+on:
+  push:
+    branches: [fix/social-grants-recall-v5-7-20261107]
+    paths:
+      - scripts/diagnose_social_noresult_v57.py
+      - .github/workflows/diagnose-social-noresult.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 7
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - run: python -m pip install reportlab==4.4.9 pypdf==5.9.0
+      - name: Analyze public archive and real completed order, no AI or Telegram
+        run: python scripts/diagnose_social_noresult_v57.py
