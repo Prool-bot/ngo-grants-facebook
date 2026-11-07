@@ -1,0 +1,71 @@
+name: NGO Grants Mini App — one-time public channel invitation
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/mini-app-public-launch.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ngo-grants-mini-app-public-invitation-20261107
+  cancel-in-progress: false
+
+jobs:
+  announce:
+    runs-on: ubuntu-latest
+    timeout-minutes: 7
+    env:
+      NGO_GRANTS_AI_BOT_TOKEN: ${{ secrets.NGO_GRANTS_AI_BOT_TOKEN }}
+      NGO_BOT_GATEWAY_URL: ${{ secrets.NGO_BOT_GATEWAY_URL }}
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      NGO_MINI_APP_PUBLIC_LAUNCH_APPROVED: 'YES_EXISTING_BOT_PUBLIC_TEST'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Offline unit tests: preserve commands and never duplicate channel posts
+        run: |
+          python -m py_compile scripts/mini_app_public_launch.py scripts/mini_app_public_preflight.py
+          python -m unittest discover -s tests -p 'test_mini_app_public*.py' -v
+      - name: Verify working Mini App v0.2 over HTTPS before public invitation
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json,os,urllib.request,urllib.error
+          from urllib.parse import urlparse
+          base=os.getenv('NGO_BOT_GATEWAY_URL','').rstrip('/')
+          parts=urlparse(base)
+          if parts.scheme!='https' or not parts.hostname or '.workers.dev' not in parts.hostname:
+            raise SystemExit('Mini App production HTTPS origin not configured')
+          for path in ('/health','/mini-app'):
+            req=urllib.request.Request(base+path,headers={
+              'User-Agent':'NGO-Grants-Healthcheck/1.0',
+              'Accept':'text/html,application/json'
+            })
+            try:
+              with urllib.request.urlopen(req,timeout=20) as response:
+                code=response.status
+                head=response.headers
+                payload=response.read(70000)
+            except (urllib.error.URLError,OSError,TimeoutError):
+              raise SystemExit('Production Mini App not reachable — no Telegram post')
+            if code!=200:raise SystemExit('Production Mini App HTTP failure — no post')
+            if path=='/health':
+              h=json.loads(payload)
+              if h.get('ok') is not True or h.get('menu_version')!='5.8':
+                raise SystemExit('Legacy menu health gate failed — no post')
+            else:
+              html=payload.decode('utf-8')
+              if (head.get('X-Ngo-Mini-App-Version')!='0.2' or
+                  'data-native-send="true"' not in html or
+                  'const explicitNext=' not in html):
+                raise SystemExit('Mini App v0.2 navigation missing — no post')
+          print('LIVE_MINI_APP_V02_READY_FOR_PUBLIC_INVITATION')
+          PY
+      - name: Register assistant command and publish one channel invitation with durable one-shot GitHub lock
+        run: python scripts/mini_app_public_launch.py
