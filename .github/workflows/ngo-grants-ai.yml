@@ -69,6 +69,8 @@ jobs:
           CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
           CF_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
           NGO_AI_AUTOPUBLISH: ${{ vars.NGO_AI_AUTOPUBLISH }}
+          # Off by default; an explicit repository variable is required to opt in.
+          NGO_GRANTS_V59_LIVE_DELIVERY: ${{ vars.NGO_GRANTS_V59_LIVE_DELIVERY }}
           NGO_BOT_GATEWAY_URL: ${{ secrets.NGO_BOT_GATEWAY_URL }}
           NGO_BOT_SYNC_SECRET: ${{ secrets.NGO_BOT_SYNC_SECRET }}
         run: python -u ngo_grants_ai.py
