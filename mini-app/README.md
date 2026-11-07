@@ -64,3 +64,15 @@
 Тестування: `node --test mini-app/tests/*.test.mjs`. Скрипт `scripts/mini_app_worker_shape_audit.py` читає актуальний Worker **тільки у пам'яті GitHub runner**, виводить лише структурні ознаки та назви релевантних функцій, не публікує вихідний код. Аудит потрібен, щоб адаптуватися до фактичної структури існуючої D1-черги, а не вигадувати нові таблиці.
 
 **Важливо:** робочий Telegram-бот і Cloudflare Worker на цьому етапі не змінені.
+
+## Спрощена інтеграція через штатний Telegram KeyboardButton (v0.2, staging)
+
+Після перевірки [офіційної документації Telegram Mini Apps](https://core.telegram.org/bots/webapps) обрано **простіший шлях без окремого публічного REST API**. Mini App, відкритий **саме з reply-keyboard кнопки** `web_app`, має штатний метод `Telegram.WebApp.sendData(payload)`. Telegram перетворює його на серверне повідомлення `message.web_app_data`, яке отримує **наявний** Cloudflare Worker через захищений webhook. Цей метод не працює при відкритті Mini App із меню/inline-кнопки, тому пропонуємо команду `/assistant`, яка надсилає reply-клавіатуру з кнопкою `🤖 Відкрити грантового помічника`. Кнопка `/start` повертає до звичайного бота.
+
+Новий модуль `worker/mini_app_keyboard_bridge.mjs` перевіряє `message.from.id === message.chat.id` для приватного чату, тип `web_app_data`, маркер схеми `ngo-grants-miniapp-v1` та усі `facets` — **ніколи не довіряє ID, надісланому HTML-формою**. Для створення замовлення викликає **той самий** `createRequest(env, chat, userId, draft, updateId)` із чинного Worker, де вже діють `getChatMember`, перевірка попереднього замовлення, денні ліміти та атомарна робота з D1. Підтвердження заявнику надсилає основний бот, а не браузер. Жодного дублювання пошукової логіки немає.
+
+`worker/patch_live_worker_mini_app.py` у пам'яті GitHub Actions runner вставляє до чинного v5.8 Worker тільки маршрут `GET /mini-app`, обробку `/assistant` та `web_app_data`. Для цього використовує перевірені точні anchors та відхиляє невідомий Worker. Публічний файл `preview.html` **лишається з `data-native-send="false"`**. У Worker-версії ця опція вмикається під час staging разом з офіційним Telegram JS SDK.
+
+`.github/workflows/mini-app-stage.yml` — **лише створення неактивної Cloudflare Worker version** із суворим успадкуванням чинних DB/AI/secret bindings. Не перемикає трафік, не відправляє повідомлень Telegram, не змінює webhook або робочу D1-чергу. Перед майбутнім перемиканням треба перевірити незалежний staged Worker та реальну роботу `createRequest` через webhook. Після успішної перевірки можливо додати `/assistant` до меню команд бота.
+
+**Відмінність від підготовленого REST endpoint:** `worker/mini_app_order_endpoint.mjs` залишається неактивною альтернативою. У новому шляху Mini App не отримує Telegram bot token і не виконує API-запити до D1. Для штатного `sendData` не потрібний `initData` HMAC, оскільки підтвердження особи йде з Telegram webhook update. Серверний HMAC-модуль збережено для можливого іншого способу запуску в майбутньому.
