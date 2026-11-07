@@ -11,6 +11,18 @@ on:
         description: 'Порожньо = нормальна робота; activate = увімкнути миттєві відповіді; deactivate = відкотити'
         required: false
         type: string
+      v59_reconcile_order:
+        description: 'Лише оператор: ID замовлення для підтвердження невизначеної доставки'
+        required: false
+        type: string
+      v59_reconcile_tier:
+        description: 'Лише оператор: direct або conditional'
+        required: false
+        type: string
+      v59_reconcile_message:
+        description: 'Лише оператор: перевірений Telegram message_id'
+        required: false
+        type: string
   schedule:
     - cron: '*/15 * * * *'
 
@@ -38,12 +50,12 @@ jobs:
           python -m pip install reportlab==4.4.9 pypdf==5.9.0
           python -m unittest discover -s tests -v
       - name: Пробний PDF без Telegram та без ШІ
-        if: inputs.dry_run_topic != '' && inputs.instant_bot_action != 'activate' && inputs.instant_bot_action != 'deactivate'
+        if: inputs.dry_run_topic != '' && inputs.instant_bot_action != 'activate' && inputs.instant_bot_action != 'deactivate' && inputs.v59_reconcile_order == ''
         env:
           DEMO_TOPIC: ${{ inputs.dry_run_topic }}
         run: python ngo_grants_ai.py --demo "$DEMO_TOPIC" --output output/demo-catalog.pdf
       - name: Зберегти пробний PDF для завантаження
-        if: inputs.dry_run_topic != '' && inputs.instant_bot_action != 'activate' && inputs.instant_bot_action != 'deactivate'
+        if: inputs.dry_run_topic != '' && inputs.instant_bot_action != 'activate' && inputs.instant_bot_action != 'deactivate' && inputs.v59_reconcile_order == ''
         uses: actions/upload-artifact@v4
         with:
           name: ngo-grants-demo-catalog
@@ -51,19 +63,28 @@ jobs:
           if-no-files-found: warn
           retention-days: 7
       - name: Активувати миттєві відповіді Telegram (лише вручну, один раз)
-        if: inputs.instant_bot_action == 'activate'
+        if: inputs.instant_bot_action == 'activate' && inputs.v59_reconcile_order == ''
         env:
           NGO_BOT_GATEWAY_URL: ${{ secrets.NGO_BOT_GATEWAY_URL }}
           NGO_BOT_SYNC_SECRET: ${{ secrets.NGO_BOT_SYNC_SECRET }}
         run: python ngo_grants_ai.py --gateway-activate
       - name: Вимкнути Telegram webhook при аварійному відкаті
-        if: inputs.instant_bot_action == 'deactivate'
+        if: inputs.instant_bot_action == 'deactivate' && inputs.v59_reconcile_order == ''
         env:
           NGO_BOT_GATEWAY_URL: ${{ secrets.NGO_BOT_GATEWAY_URL }}
           NGO_BOT_SYNC_SECRET: ${{ secrets.NGO_BOT_SYNC_SECRET }}
         run: python ngo_grants_ai.py --gateway-deactivate
+      - name: Ручне підтвердження v5.9 після перевірки публікації в каналі (без нового надсилання)
+        if: inputs.v59_reconcile_order != ''
+        env:
+          RECONCILE_ORDER: ${{ inputs.v59_reconcile_order }}
+          RECONCILE_TIER: ${{ inputs.v59_reconcile_tier }}
+          RECONCILE_MESSAGE: ${{ inputs.v59_reconcile_message }}
+          NGO_GRANTS_V59_LIVE_DELIVERY: 'true'
+        run: |
+          python ngo_grants_ai.py --v59-reconcile-order "$RECONCILE_ORDER" --v59-reconcile-tier "$RECONCILE_TIER" --v59-reconcile-message "$RECONCILE_MESSAGE"
       - name: Отримати запити та за дозволом опублікувати каталог
-        if: inputs.dry_run_topic == '' && inputs.instant_bot_action != 'activate' && inputs.instant_bot_action != 'deactivate'
+        if: inputs.dry_run_topic == '' && inputs.instant_bot_action != 'activate' && inputs.instant_bot_action != 'deactivate' && inputs.v59_reconcile_order == ''
         env:
           NGO_GRANTS_AI_BOT_TOKEN: ${{ secrets.NGO_GRANTS_AI_BOT_TOKEN }}
           CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
@@ -75,7 +96,7 @@ jobs:
           NGO_BOT_SYNC_SECRET: ${{ secrets.NGO_BOT_SYNC_SECRET }}
         run: python -u ngo_grants_ai.py
       - name: Зберегти чергу та публічні PDF
-        if: always() && inputs.dry_run_topic == '' && inputs.instant_bot_action != 'activate' && inputs.instant_bot_action != 'deactivate'
+        if: always() && inputs.dry_run_topic == '' && inputs.instant_bot_action != 'activate' && inputs.instant_bot_action != 'deactivate' && inputs.v59_reconcile_order == ''
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
@@ -94,7 +115,7 @@ jobs:
           done
           exit 1
       - name: Після збереження в GitHub оновити каталог і чергу в Cloudflare
-        if: success() && inputs.dry_run_topic == '' && inputs.instant_bot_action != 'activate'
+        if: success() && inputs.dry_run_topic == '' && inputs.instant_bot_action != 'activate' && inputs.v59_reconcile_order == ''
         env:
           NGO_BOT_GATEWAY_URL: ${{ secrets.NGO_BOT_GATEWAY_URL }}
           NGO_BOT_SYNC_SECRET: ${{ secrets.NGO_BOT_SYNC_SECRET }}
