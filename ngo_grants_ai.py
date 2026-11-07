@@ -4353,9 +4353,16 @@ def make_one_catalog(state: dict, rows: list[dict], *, dry_run=False) -> bool:
         # Preview must not mutate caller-owned state or persisted order progress.
         from copy import deepcopy
         state = deepcopy(state)
-    if not state.get("queue") or not can_publish(state, now):
+    if not state.get("queue"):
         return False
     entry = state["queue"][0]
+    if (not dry_run and os.getenv("NGO_GRANTS_V59_LIVE_DELIVERY") == "true"
+            and str(entry["id"]) in state.get("v59_deliveries", {})):
+        # Resume from frozen Git-backed manifest before reranking, AI review,
+        # deadline changes or ordinary publication spacing checks.
+        return resume_v59_delivery(state, entry, now)
+    if not can_publish(state, now):
+        return False
     if entry.get("next_retry_at") and datetime.fromisoformat(entry["next_retry_at"]) > now:
         # A search-engine fix may clear an old backoff ONCE, without another
         # subscriber order. The per-order version stamp survives failed runs.
@@ -4546,9 +4553,22 @@ def make_one_catalog(state: dict, rows: list[dict], *, dry_run=False) -> bool:
             json.dumps(identity, ensure_ascii=False,
                        separators=(",", ":")).encode("utf-8")
         ).hexdigest()
-        ensure_delivery(state, order_id=int(entry["id"]),
+        meta = {
+            "title": title, "query": query, "facets": facets,
+            "post_ids": [int(row["id"]) for _, group, _ in groups for row in group],
+            "valid_until": (
+                (now.astimezone(KYIV).date() + timedelta(days=30)).isoformat()
+                if any(row.get("_rolling") for _, group, _ in groups for row in group)
+                else max(row["_deadline"]
+                         for _, group, _ in groups for row in group)),
+            "pdf_sha256": {
+                doc["tier"]: hashlib.sha256(Path(doc["path"]).read_bytes()).hexdigest()
+                for doc in docs
+            },
+        }
+        manifest = ensure_delivery(state, order_id=int(entry["id"]),
                         fingerprint=fingerprint, documents=docs,
-                        save=save_state)
+                        save=save_state, metadata=meta)
         def checkpoint(current_state: dict) -> None:
             durable_checkpoint(current_state, save_local=save_state,
                                state_path=STATE_PATH,
@@ -4559,31 +4579,7 @@ def make_one_catalog(state: dict, rows: list[dict], *, dry_run=False) -> bool:
             save=checkpoint)
         if not complete:
             return False
-        published_entry = {
-            "id": entry["id"], "topic": query, "title": title,
-            "channel_url": f"https://t.me/{CHANNEL}/{message_ids[0]}",
-            "channel_urls": [f"https://t.me/{CHANNEL}/{m}" for m in message_ids],
-            "channel_tiers": [doc["tier"] for doc in docs],
-            "pdf": docs[0]["path"],
-            "pdfs": [doc["path"] for doc in docs],
-            "post_ids": [int(row["id"])
-                         for _, group, _ in groups for row in group],
-            "published_on": today_str,
-            "valid_until": (
-                (now.astimezone(KYIV).date() + timedelta(days=30)).isoformat()
-                if any(row.get("_rolling") for _, group, _ in groups for row in group)
-                else max(row["_deadline"]
-                         for _, group, _ in groups for row in group)),
-            "v59_document_count": len(message_ids),
-            "facets": facets,
-        }
-        if not any(int(p.get("id", -1)) == int(entry["id"])
-                   for p in state.get("published", [])):
-            state["published"].append(published_entry)
-        state["last_post_at"] = now.isoformat()
-        state["queue"].pop(0)
-        state.pop("ai_review", None)
-        print("v5.9: підтверджено доставку документів:", len(message_ids))
+        finalize_v59_order(state, entry, manifest, message_ids, now)
         return True
     if not picked:
         mark_no_results(state, entry, 'none_verified')
