@@ -41,13 +41,17 @@ class EndToEndDeliveryTests(unittest.TestCase):
              patch.object(app,"pdf_catalog") as pdf, \
              patch.object(app,"upload_pdf",side_effect=mock_send), \
              patch.object(app,"durable_checkpoint",side_effect=checkpoint), \
+             patch.object(app,"tg") as telegram, \
              patch.object(app,"save_state"):
             pdf.side_effect = lambda path,*args,**kwargs: Path(path).write_bytes(b"%PDF-test")
             result=app.make_one_catalog(state,posts,dry_run=False)
         self.assertTrue(result)
         self.assertEqual(2,len(calls))
         self.assertEqual(2,pdf.call_count)
-        self.assertEqual(4,len(checkpoints))
+        self.assertEqual(5,len(checkpoints))
+        telegram.assert_called_once()
+        self.assertEqual("editMessageReplyMarkup",telegram.call_args.args[0])
+        self.assertIn("/9002",str(telegram.call_args.args[1]))
         self.assertEqual([],state["queue"])
         self.assertEqual(1,len(state["published"]))
         self.assertEqual(["https://t.me/ngo_grants/9001",

@@ -46,7 +46,8 @@ class ResumeTests(unittest.TestCase):
         sent=[]
         with patch.object(app,"upload_pdf",side_effect=lambda path,caption:
                           (sent.append(path.name) or 7002)), \
-             patch.object(app,"durable_checkpoint") as checkpoint:
+             patch.object(app,"durable_checkpoint") as checkpoint, \
+             patch.object(app,"tg") as telegram:
             result=app.resume_v59_delivery(self.state,self.entry,NOW)
         self.assertTrue(result)
         self.assertEqual(["conditional.pdf"],sent)
@@ -54,17 +55,41 @@ class ResumeTests(unittest.TestCase):
                          [x["message_id"] for x in self.docs])
         self.assertEqual([],self.state["queue"])
         self.assertEqual(1,len(self.state["published"]))
-        self.assertEqual(2,checkpoint.call_count)
+        self.assertEqual(3,checkpoint.call_count)
+        telegram.assert_called_once()
 
     def test_all_sent_finishes_without_telegram(self):
         for i,d in enumerate(self.docs):
             d.update(status="sent",message_id=8001+i,
                      started_at="2026-11-07T10:00:00+00:00")
         with patch.object(app,"upload_pdf") as upload, \
-             patch.object(app,"durable_checkpoint") as checkpoint:
+             patch.object(app,"durable_checkpoint") as checkpoint, \
+             patch.object(app,"tg") as telegram:
             self.assertTrue(app.resume_v59_delivery(self.state,self.entry,NOW))
         upload.assert_not_called()
-        checkpoint.assert_not_called()
+        checkpoint.assert_called_once()
+        telegram.assert_called_once()
+        self.assertEqual([],self.state["queue"])
+
+    def test_navigation_edit_timeout_resumes_without_resending_pdf(self):
+        for i,d in enumerate(self.docs):
+            d.update(status="sent", message_id=8201+i,
+                     started_at="2026-11-07T10:00:00+00:00")
+        with patch.object(app,"upload_pdf") as upload, \
+             patch.object(app,"durable_checkpoint") as checkpoint, \
+             patch.object(app,"tg",side_effect=[
+                 TimeoutError("edit reply lost"),
+                 {"ok":True,"result":{"message_id":8201}}
+             ]) as telegram:
+            with self.assertRaises(TimeoutError):
+                app.resume_v59_delivery(self.state,self.entry,NOW)
+            self.assertEqual([123],[x["id"] for x in self.state["queue"]])
+            self.assertTrue(app.resume_v59_delivery(self.state,self.entry,NOW))
+        upload.assert_not_called()
+        self.assertEqual(2,telegram.call_count)
+        checkpoint.assert_called_once()
+        self.assertEqual("linked",
+                         self.state["v59_deliveries"]["123"]["navigation_status"])
         self.assertEqual([],self.state["queue"])
 
     def test_full_delivery_finalizes_even_with_quota_saturated(self):
@@ -72,9 +97,12 @@ class ResumeTests(unittest.TestCase):
             d.update(status="sent", message_id=8301+i,
                      started_at="2026-11-07T10:00:00+00:00")
         self.state["published"]=[{"id":991,"published_on":"2026-11-07"}]
-        with patch.object(app,"upload_pdf") as upload:
+        with patch.object(app,"upload_pdf") as upload, \
+             patch.object(app,"durable_checkpoint"), \
+             patch.object(app,"tg") as telegram:
             self.assertTrue(app.resume_v59_delivery(self.state,self.entry,NOW))
         upload.assert_not_called()
+        telegram.assert_called_once()
         self.assertEqual([],self.state["queue"])
 
     def test_ambiguous_sending_stops_without_ai_or_resend(self):
