@@ -15,7 +15,8 @@ STAGES = ("prepared", "sending", "sent")
 
 
 def ensure_delivery(state: dict, *, order_id: int, fingerprint: str,
-                    documents: list[dict], save: Callable[[dict], None]) -> dict:
+                    documents: list[dict], save: Callable[[dict], None],
+                    metadata: dict | None = None) -> dict:
     """Persist an immutable document manifest before any external send.
 
     A manifest should include ONLY complete PDFs prepared for the order.
@@ -31,6 +32,8 @@ def ensure_delivery(state: dict, *, order_id: int, fingerprint: str,
         actual = [(d.get("tier"), d.get("path")) for d in existing.get("documents", [])]
         if expected != actual:
             raise RuntimeError("Файли доставки змінилися під час повторного запуску.")
+        if metadata is not None and existing.get("metadata") != metadata:
+            raise RuntimeError("Змінилася метаінформація розпочатої доставки.")
         return existing
 
     if not documents:
@@ -47,7 +50,8 @@ def ensure_delivery(state: dict, *, order_id: int, fingerprint: str,
         prepared.append({"tier":doc["tier"], "path":doc["path"],
                          "caption":doc["caption"], "status":"prepared",
                          "message_id":None})
-    entry = {"fingerprint": fingerprint, "documents": prepared}
+    entry = {"fingerprint": fingerprint, "documents": prepared,
+             "metadata": dict(metadata or {})}
     deliveries[key] = entry
     save(state)
     return entry
