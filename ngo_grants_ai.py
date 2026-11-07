@@ -31,6 +31,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from zoneinfo import ZoneInfo
+from catalog_guard_v57 import quality_status, clarification_questions
 
 
 
@@ -103,7 +104,7 @@ MIN_GAP_HOURS = 2
 # Review every candidate over successive scheduled runs to preserve free AI credits.
 AI_REVIEW_BATCH_SIZE = 12
 AI_REVIEW_BATCHES_PER_RUN = 3
-SEARCH_ENGINE_VERSION = 10  # NGO Grants AI v5.6.3: hard topical / NGO eligibility evidence
+SEARCH_ENGINE_VERSION = 11  # NGO Grants AI v5.7: universal quality guard
 # Public status messages are independent of the 3-PDF/day quota.
 MAX_NO_RESULTS_PER_DAY = 3
 NO_RESULTS_REPEAT_DAYS = 7
@@ -1691,12 +1692,14 @@ MENU_REGIONS = {
  'chernihiv': ('чернігів',), 'kyiv_city': ('м. київ', 'місто київ', 'києві'),
  'crimea': ('крим', 'севастопол',),
 }
-MENU_AUDIENCES = {'nonprofit','commercial','individual','all'}
+MENU_AUDIENCES = {'nonprofit','commercial','individual','all','municipal','institution'}
 MENU_GEOS = {'ukraine','region','international','all'}
 MENU_AUDIENCE_LABELS = {
  'nonprofit': 'Некомерційна організація',
  'commercial': 'Комерційна організація / ФОП',
  'individual': 'Фізична особа', 'all': 'Усі категорії заявників',
+ 'municipal': 'Територіальна громада / орган місцевого самоврядування',
+ 'institution': 'Заклад освіти / наукова установа',
 }
 MENU_SECTOR_LABELS = {
  'education': 'освіта та наука', 'medical': 'медицина',
@@ -1753,9 +1756,21 @@ def normalized_menu_facets(raw: object) -> dict | None:
         custom_sector = ''
     if not sectors and not custom_sector:
         return None
-    return dict(audience=aud, sectors=list(dict.fromkeys(sectors)),
-                custom_sector=custom_sector, geo=geo, region=region,
-                detail=detail)
+    normalized = dict(audience=aud, sectors=list(dict.fromkeys(sectors)),
+                      custom_sector=custom_sector, geo=geo, region=region,
+                      detail=detail)
+    # Optional fields for the refined Worker menu; older menu payloads are valid.
+    role = raw.get('applicant_role')
+    if role is not None:
+        if role not in ('lead', 'partner', 'either'):
+            return None
+        normalized['applicant_role'] = role
+    fmt = raw.get('funding_format')
+    if fmt is not None:
+        if fmt not in ('any', 'grant_only'):
+            return None
+        normalized['funding_format'] = fmt
+    return normalized
 
 
 
@@ -1938,6 +1953,8 @@ def _menu_plan(facets: dict, query: str) -> dict:
     where={'ukraine':'Україна','international':'міжнародні можливості',
            'all':'усі регіони','region':MENU_REGION_LABELS.get(facets.get('region'),'')}
     plan['facets']=facets
+    # Machine-readable follow-up questions for the interactive menu Worker.
+    plan['clarification_questions'] = clarification_questions(facets)
     # Keep the COVER meaningful. Menu metadata must not consume title space
     # and must never end mid-word (previously: "сфери: Соціальна т").
     focus = (_catalog_short_subject(detail) if detail else
@@ -2218,6 +2235,10 @@ def rank_posts(rows: list[dict], query: str, keywords: list[str] | dict,
         if facets is not None:
             if not _menu_geography_eligible(content, facets):
                 continue
+            # Hard evidence gates apply to EVERY structured query, including
+            # requests with detailed text and permissive AI synonyms.
+            if quality_status(content, facets) == 'reject':
+                continue
             if not _menu_sector_eligible(content, facets) and not relaxed:
                 continue
             # Applicant-only and broad-sector searches should remain strict.
@@ -2307,7 +2328,12 @@ def rank_posts(rows: list[dict], query: str, keywords: list[str] | dict,
             note = (f'Прийом заявок починається {opening.strftime("%d.%m.%Y")}. '
                     + note)
         item['_deadline_note'] = note
-        item['_applicant_direct_evidence'] = bool(direct)
+        if facets is not None:
+            guard = quality_status(content, facets)
+            item['_guard_status'] = guard
+            item['_applicant_direct_evidence'] = guard == 'direct'
+        else:
+            item['_applicant_direct_evidence'] = bool(direct)
         item['_title'] = title[:145]
         if plan is not None:
             item['_semantic_plan'] = plan
@@ -2654,6 +2680,9 @@ def ai_classify(query: str, ranked: list[dict]) -> dict[int, str]:
                 if not row or ident in accepted:
                     continue
                 facets = plan.get('facets') if isinstance(plan, dict) else None
+                guard = quality_status(row.get('text') or '', facets)
+                if guard == 'reject':
+                    continue
                 specific = facets.get('detail') or facets.get('custom_sector') or '' if facets else query
                 if not strict_topic_match(specific, row.get('text') or ''):
                     continue
@@ -2672,7 +2701,8 @@ def ai_classify(query: str, ranked: list[dict]) -> dict[int, str]:
                 positive = _funded_activity_text(row.get('text') or '')
                 target_explicit = (not beneficiaries or all(
                     _concept_hit(positive, SEARCH_CONCEPTS[k]) for k in beneficiaries))
-                if level == 'direct' and (not row.get('_applicant_direct_evidence', True)
+                if level == 'direct' and (guard == 'conditional' or
+                                          not row.get('_applicant_direct_evidence', True)
                                           or (services and not target_explicit)):
                     level_actual = 'conditional'
                 else:
@@ -4276,8 +4306,11 @@ def make_one_catalog(state: dict, rows: list[dict], *, dry_run=False) -> bool:
 
 
     selected_ids = set(review["selected_ids"])
-    picked = dedupe_programmes([dict(lookup[i], _relevance=review.get("selected_levels", {}).get(str(i), "conditional"))
-                                for i in candidate_ids if i in selected_ids and i in lookup])
+    picked = dedupe_programmes([
+        dict(lookup[i], _relevance=review.get("selected_levels", {}).get(str(i), "conditional"))
+        for i in candidate_ids if i in selected_ids and i in lookup
+        and (facets is None or quality_status(lookup[i].get('text') or '', facets) != 'reject')
+    ])
     picked.sort(key=lambda row: (row["_relevance"] != "direct", -row["_score"],
                                  row.get("_deadline") or "9999-12-31"))
     if not picked:
