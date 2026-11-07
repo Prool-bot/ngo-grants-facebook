@@ -1,0 +1,69 @@
+name: NGO Grants Mini App v0.2 — fix Continue and live labels
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/mini-app-v02-hotfix.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ngo-grants-worker-production-deploy
+  cancel-in-progress: false
+
+jobs:
+  hotfix:
+    name: Offline regression → private staging → 0.01% canary → safe release
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
+      CF_WORKER_ACCOUNT_ID: ${{ secrets.CF_WORKER_ACCOUNT_ID }}
+      CF_WORKER_API_TOKEN: ${{ secrets.CF_WORKER_API_TOKEN }}
+      NGO_BOT_GATEWAY_URL: ${{ secrets.NGO_BOT_GATEWAY_URL }}
+      NGO_MINI_APP_RELEASE_APPROVED: 'YES_NAV_V02_CANARY'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Test navigation and rollback without Telegram or Cloudflare writes
+        run: |
+          node --check mini-app/app.js
+          node --test mini-app/tests/*.test.cjs mini-app/tests/*.test.mjs
+          python -m unittest discover -s tests -p 'test_mini_app_nav_v02_patch.py' -v
+          python -m unittest discover -s tests -p 'test_mini_app_nav_v02_release.py' -v
+      - name: Patch currently deployed v0.1 UI only, stage v0.2, smoke, canary and rollback on failure
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          workdir="$(mktemp -d "${RUNNER_TEMP}/ngo-miniapp-nav-v02.XXXXXX")"
+          trap 'rm -rf "$workdir"' EXIT
+          python worker/build_mini_app_nav_v02_candidate.py "$workdir/miniapp-nav-v02.mjs"
+          node --check "$workdir/miniapp-nav-v02.mjs"
+          node tests/test_worker_menu_v58.mjs "$workdir/miniapp-nav-v02.mjs"
+          node tests/test_mini_app_worker_mock.mjs "$workdir/miniapp-nav-v02.mjs"
+          python worker/stage_worker_mini_app.py "$workdir/miniapp-nav-v02.mjs"
+          NGO_MINI_APP_V02_VERSION_ID="$(python - <<'PY'
+          import json,os,re
+          from pathlib import Path
+          path=Path(os.environ["RUNNER_TEMP"])/"ngo-worker-miniapp-stage.json"
+          manifest=json.loads(path.read_text("utf-8"))
+          version=str(manifest.get("version_id") or "")
+          if (manifest.get("script")!="ngo-grants-instant-bot" or
+              manifest.get("staged_only") is not True or
+              re.fullmatch(r"[a-f0-9-]{36}",version) is None):
+              raise SystemExit("Invalid v0.2 dormant version manifest")
+          print(version)
+          PY
+          )"
+          export NGO_MINI_APP_V02_VERSION_ID
+          python worker/deploy_worker_mini_app_nav_v02.py
+          echo 'MINI_APP_V02_CONTINUE_FIX_DEPLOYED_AND_VERIFIED'
