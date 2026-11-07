@@ -171,7 +171,7 @@ def applicant_status(post: str, facets: dict) -> str:
     # "Фізична особа-підприємець" is a registered FOP, not an ordinary
     # individual applicant. Do not infer non-business eligibility from it.
     without_fop = re.sub(
-        r"фізичн\\w*\\s+особ\\w*[-– ]\\s*підприємц\\w*",
+        r"фізичн\w*\s+особ\w*[-– ]\s*підприємц\w*",
         " ", positive)
     human = bool(_PERSON.search(without_fop))
     muni = bool(_MUNICIPAL.search(positive))
