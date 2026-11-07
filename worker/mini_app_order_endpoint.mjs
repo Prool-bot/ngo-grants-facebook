@@ -93,6 +93,9 @@ export async function handleMiniAppOrder(request,env,deps={}){
     return json(503,{ok:false,error:"Замовлення через Mini App ще не ввімкнені"});
   if(typeof deps.enqueueExistingOrder!=="function")
     return json(503,{ok:false,error:"Серверна черга не підключена"});
+  const origin=request.headers.get("origin");
+  if(origin && origin!==new URL(request.url).origin)
+    return json(403,{ok:false,error:"Недозволене джерело запиту"});
   const ct=request.headers.get("content-type")||"";
   if(!/^application\/json(?:\s*;|\s*$)/i.test(ct))
     return json(415,{ok:false,error:"Очікується JSON"});
@@ -101,7 +104,7 @@ export async function handleMiniAppOrder(request,env,deps={}){
   let data;
   try{
     const raw=await request.text();
-    if(raw.length>16384)throw Error("size");
+    if(raw.length>16384)return json(413,{ok:false,error:"Запит завеликий"});
     data=JSON.parse(raw);
   }catch{
     return json(400,{ok:false,error:"Некоректний JSON"});
