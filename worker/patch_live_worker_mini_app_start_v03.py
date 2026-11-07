@@ -58,6 +58,6 @@ def patch(source: str) -> str:
     result=source.replace(ANCHOR,ANCHOR+ENTRY,1).replace(VERSION_OLD,VERSION_NEW,1)
     if(result.count(V03)!=1 or result.count(V01)!=1 or result.count(V02)!=1):
         raise RuntimeError("Patched Worker structural verification failed")
-    if(result.count(VERSION_NEW)!=1:
+    if result.count(VERSION_NEW)!=1:
         raise RuntimeError("Mini App new version header missing")
     return result
