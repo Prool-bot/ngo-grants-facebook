@@ -4413,8 +4413,13 @@ def make_one_catalog(state: dict, rows: list[dict], *, dry_run=False) -> bool:
             docs.append({"tier":tier,"path":str(output),"caption":caption})
         # Keep file identities and selected archive IDs immutable after the
         # first send. Any mismatched reranking stops instead of duplicating.
-        identity = [(tier, [int(row["id"]) for row in group])
-                    for tier, group, _ in groups]
+        identity = [
+            (tier, [
+                (int(row["id"]), row.get("_deadline"),
+                 hashlib.sha256((row.get("text") or "").encode("utf-8")).hexdigest())
+                for row in group
+            ]) for tier, group, _ in groups
+        ]
         fingerprint = hashlib.sha256(
             json.dumps(identity, ensure_ascii=False,
                        separators=(",", ":")).encode("utf-8")
