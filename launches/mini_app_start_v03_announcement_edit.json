@@ -1,8 +1,9 @@
 {
-  "status": "attempted",
+  "status": "edited",
   "target": "https://t.me/ngo_grants/3813",
   "operation": "editMessageText",
   "reason": "Remove /assistant entry friction",
   "created_at": "2026-11-07T19:47:11.538912+00:00",
-  "github_run": "42407853812"
+  "github_run": "42407853812",
+  "edited_at": "2026-11-07T19:47:13.027073+00:00"
 }
