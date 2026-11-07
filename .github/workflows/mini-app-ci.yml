@@ -6,6 +6,9 @@ on:
       - "mini-app/**"
       - "worker/mini_app_verify_init_data.mjs"
       - "worker/mini_app_order_endpoint.mjs"
+      - "worker/mini_app_keyboard_bridge.mjs"
+      - "worker/patch_live_worker_mini_app.py"
+      - "worker/stage_worker_mini_app.py"
       - ".github/workflows/mini-app-ci.yml"
   workflow_dispatch:
 
@@ -18,6 +21,9 @@ jobs:
     timeout-minutes: 4
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
@@ -27,8 +33,12 @@ jobs:
           node --check mini-app/app.js
           node --check worker/mini_app_verify_init_data.mjs
           node --check worker/mini_app_order_endpoint.mjs
+          node --check worker/mini_app_keyboard_bridge.mjs
+          python -m py_compile worker/patch_live_worker_mini_app.py worker/stage_worker_mini_app.py
       - name: Verify schema and isolated preview safety
         run: node --test mini-app/tests/*.test.cjs mini-app/tests/*.test.mjs
+      - name: Check synthetic Worker patch and fail-closed anchors
+        run: python -m unittest discover -s tests -p 'test_mini_app_worker_patch.py' -v
       - name: Publish preview files as CI artifact, not a public deployment
         uses: actions/upload-artifact@v4
         with:
