@@ -35,8 +35,8 @@ _NGO = re.compile(
     r"non-?profit|civil society organi)", re.I)
 _COMPANY = re.compile(
     r"(?:\bфоп\b|\bтов\b|\bмсб\b|"
-    r"підприємц\w*|підприємств\w*|компані\w*|бізнес\w*|"
-    r"комерційн\w*\s+організаці|"
+    r"підприємц\w*|підприємств\w*|компані\w*|бізнес\w*|стартап\w*|"
+    r"\bкомерційн\w*\s+організаці|"
     r"\bsme\b|\bsmes\b|\bstartup\w*\b|\bcompanies\b|"
     r"\bbusinesses\b|entrepreneur\w*)", re.I)
 _PERSON = re.compile(
