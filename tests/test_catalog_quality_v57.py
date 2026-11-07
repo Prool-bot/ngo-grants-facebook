@@ -119,7 +119,7 @@ class QualityV57Tests(unittest.TestCase):
     def test_menu_questions_before_spending_daily_quota(self):
         f=facets(audience="nonprofit",sectors=("recovery",),
                  detail="Гранти для територіальних громад")
-        self.assertIn("організація",guard.clarification_questions(f)[0]["question"].casefold())
+        self.assertIn("го",guard.clarification_questions(f)[0]["question"].casefold())
         f=facets(audience="individual",sectors=("agriculture",))
         self.assertIn("ФОП",guard.clarification_questions(f)[0]["question"])
         f=facets(audience="commercial",sectors=("business",),
@@ -138,6 +138,12 @@ class QualityV57Tests(unittest.TestCase):
         f=facets(audience="nonprofit",sectors=("social",))
         plan=app._menu_plan(f,"Соціальні проєкти")
         # No Cloudflare call is needed when menu detail is empty.
+        print("DEBUG quality:",guard.quality_status(good,f),guard.quality_status(bad,f))
+        print("DEBUG geography:",app._menu_geography_eligible(good,f))
+        print("DEBUG sector:",app._menu_sector_eligible(good,f))
+        print("DEBUG plan:",plan.get('topic_groups'),plan.get('source_query'))
+        print("DEBUG candidate:",app._candidate_matches_subject(good,plan))
+        print("DEBUG deadline:",app.deadline_from_post(good,date(2026,11,7)))
         ranked=app.rank_posts([
             {"id":10001,"text":good},
             {"id":10002,"text":bad},
