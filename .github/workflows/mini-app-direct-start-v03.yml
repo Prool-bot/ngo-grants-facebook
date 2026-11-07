@@ -1,0 +1,75 @@
+name: NGO Grants Mini App — direct Start button and announcement update
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/mini-app-direct-start-v03.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ngo-grants-worker-production-deploy
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
+      CF_WORKER_ACCOUNT_ID: ${{ secrets.CF_WORKER_ACCOUNT_ID }}
+      CF_WORKER_API_TOKEN: ${{ secrets.CF_WORKER_API_TOKEN }}
+      NGO_BOT_GATEWAY_URL: ${{ secrets.NGO_BOT_GATEWAY_URL }}
+      NGO_GRANTS_AI_BOT_TOKEN: ${{ secrets.NGO_GRANTS_AI_BOT_TOKEN }}
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      NGO_MINI_APP_RELEASE_APPROVED: 'YES_DIRECT_START_V03_CANARY'
+      NGO_MINI_APP_START_POST_EDIT_APPROVED: 'YES_EDIT_EXISTING_POST_ONLY'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Validate strict Worker patch and rollback without external writes
+        run: |
+          python -m py_compile worker/patch_live_worker_mini_app_start_v03.py worker/build_mini_app_start_v03_candidate.py worker/deploy_worker_mini_app_start_v03.py scripts/mini_app_start_v03_edit_post.py
+          python -m unittest discover -s tests -p 'test_mini_app_start_v03_*.py' -v
+          node --check tests/test_mini_app_start_direct_worker.mjs
+          node --test mini-app/tests/*.test.cjs mini-app/tests/*.test.mjs
+      - name: Stage private Worker, smoke legacy menu and direct Start in offline mocked runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          workdir="$(mktemp -d "${RUNNER_TEMP}/miniapp-v03-direct-start.XXXXXX")"
+          trap 'rm -rf "$workdir"' EXIT
+          python worker/build_mini_app_start_v03_candidate.py "$workdir/start-v03.mjs"
+          node --check "$workdir/start-v03.mjs"
+          node tests/test_worker_menu_v58.mjs "$workdir/start-v03.mjs"
+          node tests/test_mini_app_worker_mock.mjs "$workdir/start-v03.mjs"
+          node tests/test_mini_app_start_direct_worker.mjs "$workdir/start-v03.mjs"
+          node tests/test_mini_app_actual_worker_order_bridge_e2e.mjs "$workdir/start-v03.mjs"
+          python worker/stage_worker_mini_app.py "$workdir/start-v03.mjs"
+          NGO_MINI_APP_V03_VERSION_ID="$(python - <<'PY'
+          import json,os,re
+          from pathlib import Path
+          path=Path(os.environ["RUNNER_TEMP"])/"ngo-worker-miniapp-stage.json"
+          info=json.loads(path.read_text("utf-8"))
+          version=str(info.get("version_id") or "")
+          if (info.get("script")!="ngo-grants-instant-bot" or
+              info.get("staged_only") is not True or
+              re.fullmatch(r"[a-f0-9-]{36}",version) is None):
+              raise SystemExit("Invalid dormant Worker version receipt")
+          print(version)
+          PY
+          )"
+          export NGO_MINI_APP_V03_VERSION_ID
+          python worker/deploy_worker_mini_app_start_v03.py
+          echo "DIRECT_START_V03_PRODUCTION_RELEASE_OK"
+      - name: Edit existing Telegram post #3813 once to remove the /assistant instruction
+        run: python scripts/mini_app_start_v03_edit_post.py
