@@ -1,0 +1,25 @@
+name: NGO Grants Mini App — one-time existing queue semantic audit
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/mini-app-queue-semantic-audit.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    env:
+      CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
+      CF_WORKER_ACCOUNT_ID: ${{ secrets.CF_WORKER_ACCOUNT_ID }}
+      CF_WORKER_API_TOKEN: ${{ secrets.CF_WORKER_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Syntax check and read-only production semantic audit
+        run: |
+          python -m py_compile scripts/mini_app_queue_semantic_audit.py
+          python scripts/mini_app_queue_semantic_audit.py
