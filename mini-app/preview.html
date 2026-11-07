@@ -193,6 +193,11 @@ const draft={audience:'',sectors:[],geo:'',region:'',detail:'',
  custom_sector:'',applicant_role:'lead',funding_format:'any'};
 let index=0;
 let reactionTimeout=null;
+const live=root.dataset.nativeSend==='true';
+el('mode').textContent=live?'Telegram · грантовий помічник':'Демонстрація · без надсилання';
+el('disclaimer').textContent=live
+ ?'Замовлення буде передано до Telegram лише після натискання «Замовити каталог» на останньому кроці. Діють правила підписки та денні ліміти.'
+ :'Це окремий прототип. Реальні замовлення та запити до Telegram/Cloudflare не надсилаються.';
 let focusExtra=false;
 const pages=[
  {key:'audience',heading:'Хто подаватиме заявку?',help:'Виберіть тип заявника, щоб ми врахували умови участі.',options:schema.audiences},
@@ -237,6 +242,10 @@ function next(){
  if(p.key==='sectors'&&!draft.sectors.length)return error('Оберіть хоча б один напрям.');
  if(p.key==='geo'&&!draft.geo)return error('Оберіть географію.');
  if(p.key==='region'&&!draft.region)return error('Оберіть регіон.');
+ if(p.key==='applicant_role'&&!Object.prototype.hasOwnProperty.call(schema.roles,draft.applicant_role))
+   return error('Оберіть роль заявника.');
+ if(p.key==='funding_format'&&!Object.prototype.hasOwnProperty.call(schema.formats,draft.funding_format))
+   return error('Оберіть форму підтримки.');
  index+=1;focusExtra=false;render();trigger('ack');
 }
 function setValue(key,value){
@@ -257,6 +266,10 @@ function buttonOptions(p){
          draft.sectors=prev.includes(value)?prev.filter(x=>x!==value):[...prev,value];
        }
        error('');render();trigger('ack');
+     }else if(p.key==='applicant_role'||p.key==='funding_format'){
+       // These steps have preselected defaults. Do not require users to tap
+       // an already checked option just to move forward.
+       draft[p.key]=value;error('');render();trigger('ack');
      }else{setValue(p.key,value);}
    },multi));
  }
@@ -272,7 +285,9 @@ function renderExtra(p){
 }
 function renderSummary(){
  el('question').textContent='Перевірте свій запит';
- el('hint').textContent='Це ще демонстрація. Дані не передаватимуться робочому боту.';
+ el('hint').textContent=live
+  ?'Перевірте параметри. Лише кнопка «Замовити каталог» передасть замовлення Telegram-боту.'
+  :'Це демонстрація. Дані не передаватимуться робочому боту.';
  el('stepLabel').textContent='Підсумок';
  el('next').hidden=true;
  const wrap=el('summary');wrap.hidden=false;
@@ -284,7 +299,6 @@ function renderSummary(){
     row.append(dt,dd);dl.append(row);}
   wrap.append(dl);
   const note=document.createElement('p');note.className='notice';
-  const live=root.dataset.nativeSend==='true';
   note.textContent=live
     ?'Після натискання Telegram передасть анкету боту. Він перевірить підписку та денний ліміт і підтвердить замовлення в чаті. Натискання саме по собі ще не означає прийняття.'
     :'✓ Анкету сформовано локально. Це лише демонстрація; замовлення не надсилається.';
@@ -334,7 +348,10 @@ function render(){
  if(p.multi){
     el('next').hidden=false;el('next').textContent='Продовжити →';el('next').disabled=!draft.sectors.length;
  }else if(p.options){
-    el('next').hidden=true;el('next').disabled=false;
+    const explicitNext=p.key==='applicant_role'||p.key==='funding_format';
+    el('next').hidden=!explicitNext;
+    el('next').textContent='Продовжити →';
+    el('next').disabled=explicitNext&&!draft[p.key];
  }
 }
 extra.addEventListener('submit',e=>{
