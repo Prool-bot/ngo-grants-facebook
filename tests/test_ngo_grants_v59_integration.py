@@ -42,6 +42,7 @@ class EndToEndDeliveryTests(unittest.TestCase):
              patch.object(app,"upload_pdf",side_effect=mock_send), \
              patch.object(app,"durable_checkpoint",side_effect=checkpoint), \
              patch.object(app,"save_state"):
+            pdf.side_effect = lambda path,*args,**kwargs: Path(path).write_bytes(b"%PDF-test")
             result=app.make_one_catalog(state,posts,dry_run=False)
         self.assertTrue(result)
         self.assertEqual(2,len(calls))
@@ -67,10 +68,11 @@ class EndToEndDeliveryTests(unittest.TestCase):
              patch.object(app,"ai_expand",return_value=("Тест",{"version":0})), \
              patch.object(app,"rank_posts",return_value=posts), \
              patch.object(app,"ai_classify",return_value={101:"direct"}), \
-             patch.object(app,"pdf_catalog"), \
+             patch.object(app,"pdf_catalog") as pdf, \
              patch.object(app,"upload_pdf",side_effect=TimeoutError), \
              patch.object(app,"durable_checkpoint"), \
              patch.object(app,"save_state"):
+            pdf.side_effect = lambda path,*args,**kwargs: Path(path).write_bytes(b"%PDF-test")
             with self.assertRaises(TimeoutError):
                 app.make_one_catalog(state,posts,dry_run=False)
         self.assertEqual([602],[i["id"] for i in state["queue"]])
