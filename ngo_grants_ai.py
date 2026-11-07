@@ -4219,6 +4219,11 @@ def make_one_catalog(state: dict, rows: list[dict], *, dry_run=False) -> bool:
     progress is persisted so retries do not unnecessarily spend free AI tokens.
     """
     now = datetime.now(timezone.utc)
+    preview_mode = dry_run and os.getenv("NGO_GRANTS_V59_PREVIEW") == "1"
+    if preview_mode:
+        # Preview must not mutate caller-owned state or persisted order progress.
+        from copy import deepcopy
+        state = deepcopy(state)
     if not state.get("queue") or not can_publish(state, now):
         return False
     entry = state["queue"][0]
@@ -4229,7 +4234,8 @@ def make_one_catalog(state: dict, rows: list[dict], *, dry_run=False) -> bool:
         if (int(entry.get('retries', 0)) >= 2 and
                 entry.get('retry_engine_version') != SEARCH_ENGINE_VERSION):
             entry['retry_engine_version'] = SEARCH_ENGINE_VERSION
-            save_state(state)
+            if not preview_mode:
+                save_state(state)
             print('Оновлено пошуковий механізм: один контрольний запуск '
                   'відкладеного замовлення без повторного запиту підписника.')
         else:
@@ -4273,7 +4279,8 @@ def make_one_catalog(state: dict, rows: list[dict], *, dry_run=False) -> bool:
             "selected_levels": {},
         }
         state["ai_review"] = review
-        save_state(state)
+        if not preview_mode:
+            save_state(state)
     else:
         title = review["title"]
         keywords = review["keywords"]
@@ -4303,7 +4310,8 @@ def make_one_catalog(state: dict, rows: list[dict], *, dry_run=False) -> bool:
         review["offset"] = offset
         batches += 1
         # Save progress after *each* successful batch to avoid repeated AI costs.
-        save_state(state)
+        if not preview_mode:
+            save_state(state)
 
 
 
@@ -4327,7 +4335,7 @@ def make_one_catalog(state: dict, rows: list[dict], *, dry_run=False) -> bool:
                                  row.get("_deadline") or "9999-12-31"))
     # v5.9 isolated preview. Never publish or mutate order state in this path.
     # Intentionally opt-in to preserve the operational v5.7/v5.8 contract.
-    if dry_run and os.getenv("NGO_GRANTS_V59_PREVIEW") == "1":
+    if preview_mode:
         direct_rows, conditional_rows = partition_reviewed_rows(
             picked, facets, as_of=now.astimezone(KYIV).date())
         preview_slug = (f"ngo_grants_v59_preview_"
