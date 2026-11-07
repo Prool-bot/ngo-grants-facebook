@@ -73,3 +73,9 @@ Telegram Bot API не забезпечує вбудованого idempotency ke
 Оператор **спочатку вручну перевіряє в каналі**, чи з'явився конкретний PDF. Якщо так, у GitHub Actions → `NGO Grants — AI catalogs` → `Run workflow` заповнюються **одночасно** три поля: `v59_reconcile_order` (ID замовлення), `v59_reconcile_tier` (`direct` або `conditional`) і `v59_reconcile_message` (перевірений Telegram message_id). Ця дія запускає лише `--v59-reconcile-*`, підтверджує запис через durable checkpoint і **не надсилає нічого в Telegram**. При невпевненості в message_id підтвердження робити не можна: потрібне ручне розслідування. Автоматичного повторного надсилання для `sending` немає.
 
 За відсутності повідомлення в каналі **не треба** вигадувати message_id: питання вирішується окремою адміністративною процедурою, поза автоматичним retry.
+
+## Реальний Git subprocess test без production
+
+Додано `tests/test_ngo_grants_v59_real_git_checkpoint.py`: CI створює локальний bare-репозиторій, окрему `main` і перевіряє справжню послідовність git commit → pull --rebase → push → порівняння remote SHA. Тест не має доступу до реального GitHub main і не надсилає нічого в Telegram. Підтверджене проходження: `42385965089`.
+
+На час підготовки цього документа релізна гілка все ще відокремлена від `main`; лише автоматизоване локальне моделювання Git не замінює реального end-to-end підтвердження Cloudflare + Telegram.
