@@ -4735,7 +4735,24 @@ def main():
     # independent daily status cap. This does not use Cloudflare AI credits.
     if publish_pending_no_results(state):
         save_state(state)
-    if not state["queue"] or not can_publish(state, datetime.now(timezone.utc)):
+    if not state["queue"]:
+        return
+    pending_v59 = (os.environ.get("NGO_GRANTS_V59_LIVE_DELIVERY") == "true"
+                   and str(state["queue"][0]["id"]) in
+                   state.get("v59_deliveries", {}))
+    if not pending_v59 and not can_publish(state, datetime.now(timezone.utc)):
+        return
+    if not pending_v59 and not (os.environ.get("CF_ACCOUNT_ID") and os.environ.get("CF_API_TOKEN")):
+        print("Не вистачає секретів CF_ACCOUNT_ID і CF_API_TOKEN: запити залишаються в черзі.")
+        return
+    if pending_v59:
+        # Manifest recovery never needs AI credentials or a fresh archive scan.
+        try:
+            if resume_v59_delivery(state, state["queue"][0], datetime.now(timezone.utc)):
+                save_state(state)
+        except Exception as exc:
+            print("v5.9: відновлення заблоковано до перевірки: " +
+                  type(exc).__name__, file=sys.stderr)
         return
     if not (os.environ.get("CF_ACCOUNT_ID") and os.environ.get("CF_API_TOKEN")):
         print("Не вистачає секретів CF_ACCOUNT_ID і CF_API_TOKEN: запити залишаються в черзі.")
