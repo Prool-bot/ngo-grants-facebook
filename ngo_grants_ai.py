@@ -32,6 +32,9 @@ import urllib.parse
 import urllib.request
 from zoneinfo import ZoneInfo
 from catalog_guard_v57 import quality_status, clarification_questions
+from catalog_presentation_v59 import partition_reviewed_rows
+from ngo_grants_v59_delivery import ensure_delivery, deliver_documents, reconcile_document
+from ngo_grants_v59_checkpoint import durable_checkpoint
 
 
 
@@ -2950,9 +2953,17 @@ def show_catalogs(chat_id: int, state: dict) -> None:
     lines = ["📚 <b>Готові PDF-каталоги у @ngo_grants</b>\n"]
     for item in published:
         title = escape(str(item.get("title", "Тематичний каталог"))[:120])
-        url = str(item.get("channel_url", ""))
-        if re.fullmatch(r"https://t\.me/ngo_grants/\d+", url):
-            lines.append(f"• <a href=\"{url}\">{title}</a>")
+        urls = item.get("channel_urls") or [item.get("channel_url", "")]
+        tier_labels = {"direct":"📗 Підтверджені","conditional":"📙 Умовні"}
+        tiers = item.get("channel_tiers") or []
+        for position, candidate in enumerate(urls):
+            url = str(candidate or "")
+            if re.fullmatch(r"https://t\.me/ngo_grants/\d+", url):
+                tier = tiers[position] if position < len(tiers) else (
+                    ("direct","conditional")[position] if
+                    item.get("channel_urls") and position < 2 else "")
+                suffix = (" — " + tier_labels[tier] if tier in tier_labels else "")
+                lines.append(f'• <a href="{url}">{title}{suffix}</a>')
     lines.append("\nОберіть каталог і відкрийте PDF безпосередньо у каналі.")
     message(chat_id, "\n".join(lines), reply_markup=UI_KEYBOARD, formatted=True)
 
@@ -3380,9 +3391,10 @@ def pdf_catalog(path: Path, title: str, topic: str, rows: list[dict], stamp: dat
             return row['_v41_card_fields']
         fields = catalog_card_fields(row.get('text', ''))
         if row.get('_relevance') == 'conditional':
-            # Never erase original warnings (submission fees, exclusions, etc.).
-            caution = ('Пряма заявка обраного типу заявника не підтверджена. '
-                       'Перевірте вимоги до заявника та можливість співпраці.')
+            # Explain the ACTUAL unresolved condition; do not falsely state
+            # applicant ineligibility when only beneficiary scope is uncertain.
+            caution = (str(row.get('_conditional_reason') or '').strip()
+                       or 'Перевірте додаткові умови участі перед поданням.')
             previous = fields['warning']
             if previous == 'Перед поданням перевірте чинні правила.':
                 fields['warning'] = caution
@@ -4012,9 +4024,40 @@ def notify_gateway(state: dict) -> None:
 
 
 
-def can_publish(state: dict, now: datetime) -> bool:
+def publication_slots_used(state: dict, now: datetime) -> int:
+    """Count published PDFs AND unresolved outgoing documents for this Kyiv day.
+
+    A Telegram timeout can still mean a successful upload, so 'sending'
+    consumes one conservative slot until an operator reconciles it.
+    """
     local_day = now.astimezone(KYIV).date().isoformat()
-    today_count = sum(x.get("published_on") == local_day for x in state.get("published", []))
+    completed_ids = {str(p.get("id")) for p in state.get("published", [])
+                     if p.get("v59_document_count")}
+    count = sum(
+        int(item.get("v59_document_count") or 1)
+        for item in state.get("published", [])
+        if item.get("published_on") == local_day
+    )
+    for order_id, entry in state.get("v59_deliveries", {}).items():
+        if str(order_id) in completed_ids:
+            continue
+        for doc in entry.get("documents", []):
+            if doc.get("status") not in ("sending", "sent"):
+                continue
+            try:
+                started = datetime.fromisoformat(doc["started_at"])
+                if started.tzinfo is None:
+                    continue
+                if started.astimezone(KYIV).date().isoformat() == local_day:
+                    count += 1
+            except (KeyError, ValueError, TypeError):
+                # Corrupt timestamp in an in-flight delivery blocks publication.
+                return MAX_PER_DAY
+    return count
+
+
+def can_publish(state: dict, now: datetime) -> bool:
+    today_count = publication_slots_used(state, now)
     if today_count >= MAX_PER_DAY:
         return False
     last = state.get("last_post_at")
@@ -4204,6 +4247,119 @@ def publish_pending_no_results(state: dict, *, now: datetime | None = None) -> b
 
 
 
+def resume_v59_delivery(state: dict, entry: dict,
+                        now: datetime) -> bool:
+    """Resume frozen PDFs without redoing AI search or touching other orders.
+
+    An ambiguous 'sending' remains frozen until operator reconciliation.
+    PDF bytes and document metadata are verified before any remaining send.
+    """
+    order_id = int(entry["id"])
+    manifest = state.get("v59_deliveries", {}).get(str(order_id))
+    if not manifest:
+        return False
+    docs = manifest.get("documents", [])
+    meta = manifest.get("metadata") or {}
+    if (not docs or not meta.get("title") or
+            not isinstance(meta.get("post_ids"), list)):
+        raise RuntimeError("Неповний маніфест v5.9: продовження заборонено")
+    if any(d.get("status") == "sending" for d in docs):
+        print("v5.9: невизначене надсилання; потрібна ручна звірка каналу.")
+        return False
+    if any(d.get("status") not in ("prepared", "sent") for d in docs):
+        raise RuntimeError("Неприпустимий стан документа v5.9")
+    tier_deadlines = meta.get("deadlines_by_tier")
+    if not isinstance(tier_deadlines, dict):
+        raise RuntimeError("Відсутня заморожена перевірка дедлайнів v5.9")
+    for doc in docs:
+        if doc.get("status") != "prepared":
+            continue
+        frozen = tier_deadlines.get(doc["tier"])
+        if not isinstance(frozen, list) or not frozen:
+            raise RuntimeError("Немає підтверджених строків для незавершеного PDF")
+        for raw in frozen:
+            if raw is not None and date.fromisoformat(raw) < now.astimezone(KYIV).date():
+                raise RuntimeError("Грант у PDF вже закрито; продовження доставки заблоковано")
+    for doc in docs:
+        pdf_path = Path(doc["path"])
+        if not pdf_path.is_file():
+            raise RuntimeError("PDF відсутній у GitHub checkout; надсилання заблоковано")
+        expected_sha = meta.get("pdf_sha256", {}).get(doc["tier"])
+        if not expected_sha or hashlib.sha256(pdf_path.read_bytes()).hexdigest() != expected_sha:
+            raise RuntimeError("Контрольна сума PDF не відповідає маніфесту")
+    if all(doc.get("status") == "sent" for doc in docs):
+        # Completing bookkeeping does not send new Telegram messages and must
+        # be allowed even if today's publication limit has since been reached.
+        _, ids = deliver_documents(
+            state, order_id=order_id,
+            send=lambda *_: (_ for _ in ()).throw(
+                RuntimeError("Повторне надсилання завершеного PDF заборонено")),
+            save=lambda _: (_ for _ in ()).throw(
+                RuntimeError("Завершення не повинно змінювати документ")))
+        finalize_v59_order(state, entry, manifest, ids, now)
+        return True
+    # Never exceed the message quota even after a runner restart. Previously
+    # started documents already reserve their own slot.
+    quota = publication_slots_used(state, now)
+    reserved_today = 0
+    for doc in docs:
+        if doc.get("status") not in ("sending", "sent"):
+            continue
+        try:
+            started = datetime.fromisoformat(doc["started_at"])
+            if started.tzinfo is not None and (
+                    started.astimezone(KYIV).date() == now.astimezone(KYIV).date()):
+                reserved_today += 1
+        except (ValueError, KeyError, TypeError):
+            raise RuntimeError("Не можна перевірити час відправлення")
+    if quota + len(docs) - reserved_today > MAX_PER_DAY:
+        print("v5.9: відкладено продовження — недостатньо місць у денному ліміті.")
+        return False
+
+    def checkpoint(current_state: dict) -> None:
+        durable_checkpoint(
+            current_state, save_local=save_state, state_path=STATE_PATH,
+            artifact_paths=[Path(d["path"]) for d in docs])
+    _, message_ids = deliver_documents(
+        state, order_id=order_id,
+        send=lambda path, caption: upload_pdf(Path(path), caption),
+        save=checkpoint)
+    finalize_v59_order(state, entry, manifest, message_ids, now)
+    return True
+
+
+def finalize_v59_order(state: dict, entry: dict, manifest: dict,
+                       message_ids: list[int], now: datetime) -> None:
+    """Commit one completed order to the in-memory publication ledger."""
+    meta = manifest.get("metadata") or {}
+    docs = manifest.get("documents", [])
+    if not docs or len(docs) != len(message_ids):
+        raise RuntimeError("Неможливо завершити неповну доставку")
+    if not all(doc.get("status") == "sent" for doc in docs):
+        raise RuntimeError("Завершення до підтвердження всіх PDF заборонено")
+    if int(state["queue"][0]["id"]) != int(entry["id"]):
+        raise RuntimeError("Черга замовлень змінилася під час відправлення")
+    if not any(int(p.get("id", -1)) == int(entry["id"])
+               for p in state.get("published", [])):
+        state.setdefault("published", []).append({
+            "id": entry["id"], "topic": meta["query"], "title": meta["title"],
+            "channel_url": f"https://t.me/{CHANNEL}/{message_ids[0]}",
+            "channel_urls": [f"https://t.me/{CHANNEL}/{mid}" for mid in message_ids],
+            "channel_tiers": [doc["tier"] for doc in docs],
+            "pdf": docs[0]["path"],
+            "pdfs": [doc["path"] for doc in docs],
+            "post_ids": list(meta["post_ids"]),
+            "published_on": now.astimezone(KYIV).date().isoformat(),
+            "valid_until": meta["valid_until"],
+            "v59_document_count": len(message_ids),
+            "facets": meta.get("facets"),
+        })
+    state["last_post_at"] = now.isoformat()
+    state["queue"].pop(0)
+    state.pop("ai_review", None)
+    print("v5.9: завершено доставку документів:", len(message_ids))
+
+
 def make_one_catalog(state: dict, rows: list[dict], *, dry_run=False) -> bool:
     """Review every eligible post in small AI batches across scheduled runs.
 
@@ -4215,9 +4371,21 @@ def make_one_catalog(state: dict, rows: list[dict], *, dry_run=False) -> bool:
     progress is persisted so retries do not unnecessarily spend free AI tokens.
     """
     now = datetime.now(timezone.utc)
-    if not state.get("queue") or not can_publish(state, now):
+    preview_mode = dry_run and os.getenv("NGO_GRANTS_V59_PREVIEW") == "1"
+    if preview_mode:
+        # Preview must not mutate caller-owned state or persisted order progress.
+        from copy import deepcopy
+        state = deepcopy(state)
+    if not state.get("queue"):
         return False
     entry = state["queue"][0]
+    if (not dry_run and os.getenv("NGO_GRANTS_V59_LIVE_DELIVERY") == "true"
+            and str(entry["id"]) in state.get("v59_deliveries", {})):
+        # Resume from frozen Git-backed manifest before reranking, AI review,
+        # deadline changes or ordinary publication spacing checks.
+        return resume_v59_delivery(state, entry, now)
+    if not can_publish(state, now):
+        return False
     if entry.get("next_retry_at") and datetime.fromisoformat(entry["next_retry_at"]) > now:
         # A search-engine fix may clear an old backoff ONCE, without another
         # subscriber order. The per-order version stamp survives failed runs.
@@ -4225,7 +4393,8 @@ def make_one_catalog(state: dict, rows: list[dict], *, dry_run=False) -> bool:
         if (int(entry.get('retries', 0)) >= 2 and
                 entry.get('retry_engine_version') != SEARCH_ENGINE_VERSION):
             entry['retry_engine_version'] = SEARCH_ENGINE_VERSION
-            save_state(state)
+            if not preview_mode:
+                save_state(state)
             print('Оновлено пошуковий механізм: один контрольний запуск '
                   'відкладеного замовлення без повторного запиту підписника.')
         else:
@@ -4269,7 +4438,8 @@ def make_one_catalog(state: dict, rows: list[dict], *, dry_run=False) -> bool:
             "selected_levels": {},
         }
         state["ai_review"] = review
-        save_state(state)
+        if not preview_mode:
+            save_state(state)
     else:
         title = review["title"]
         keywords = review["keywords"]
@@ -4299,7 +4469,8 @@ def make_one_catalog(state: dict, rows: list[dict], *, dry_run=False) -> bool:
         review["offset"] = offset
         batches += 1
         # Save progress after *each* successful batch to avoid repeated AI costs.
-        save_state(state)
+        if not preview_mode:
+            save_state(state)
 
 
 
@@ -4321,6 +4492,122 @@ def make_one_catalog(state: dict, rows: list[dict], *, dry_run=False) -> bool:
     ])
     picked.sort(key=lambda row: (row["_relevance"] != "direct", -row["_score"],
                                  row.get("_deadline") or "9999-12-31"))
+    # v5.9 isolated preview. Never publish or mutate order state in this path.
+    # Intentionally opt-in to preserve the operational v5.7/v5.8 contract.
+    if preview_mode:
+        direct_rows, conditional_rows = partition_reviewed_rows(
+            picked, facets, as_of=now.astimezone(KYIV).date())
+        preview_slug = (f"ngo_grants_v59_preview_"
+                        f"{now.astimezone(KYIV).strftime('%Y%m%d')}_{entry['id']}")
+        PDF_DIR.mkdir(parents=True, exist_ok=True)
+        for tier, group, suffix in (
+                ("ПІДТВЕРДЖЕНІ ГРАНТИ", direct_rows, "direct"),
+                ("УМОВНІ МОЖЛИВОСТІ — ПОТРІБНА ПЕРЕВІРКА",
+                 conditional_rows, "conditional")):
+            if not group:
+                continue
+            preview_pdf = PDF_DIR / (preview_slug + "_" + suffix + ".pdf")
+            pdf_catalog(preview_pdf, tier + ": " + title, query, group,
+                        now.astimezone(KYIV).date(), facets=facets)
+            print("v5.9 preview:", tier, preview_pdf, "записів:", len(group))
+        print("v5.9 preview підсумок: прямі=", len(direct_rows),
+              "умовні=", len(conditional_rows),
+              "в Telegram не опубліковано")
+        return False
+    if (not dry_run and os.getenv("NGO_GRANTS_V59_LIVE_DELIVERY") == "true"):
+        # Explicit opt-in only. The production main workflow currently leaves
+        # this unset. Durable checkpoints must be pushed before each send.
+        direct_rows, conditional_rows = partition_reviewed_rows(
+            picked, facets, as_of=now.astimezone(KYIV).date())
+        if not direct_rows and not conditional_rows:
+            mark_no_results(state, entry, 'none_verified')
+            state["queue"].pop(0)
+            state.pop("ai_review", None)
+            return True
+        groups = [("direct", direct_rows, "ПІДТВЕРДЖЕНІ ГРАНТИ"),
+                  ("conditional", conditional_rows,
+                   "УМОВНІ МОЖЛИВОСТІ — ПОТРІБНА ПЕРЕВІРКА")]
+        groups = [part for part in groups if part[1]]
+        today_str = now.astimezone(KYIV).date().isoformat()
+        used_today = publication_slots_used(state, now)
+        # The current order's already reserved documents are included above.
+        manifest_existing = state.get("v59_deliveries", {}).get(str(entry["id"]))
+        reserved_here = 0
+        if manifest_existing:
+            for doc in manifest_existing.get("documents", []):
+                if doc.get("status") not in ("sending", "sent"):
+                    continue
+                try:
+                    started = datetime.fromisoformat(doc["started_at"])
+                    if started.tzinfo is not None and (
+                            started.astimezone(KYIV).date().isoformat() == today_str):
+                        reserved_here += 1
+                except (KeyError, ValueError, TypeError):
+                    print("v5.9: пошкоджено час резервування доставки.")
+                    return False
+        if used_today + len(groups) - reserved_here > MAX_PER_DAY:
+            print("v5.9: недостатньо доступних слотів для повної доставки.")
+            return False
+        slug59 = f"ngo_grants_v59_order_{int(entry['id'])}"
+        docs = []
+        for tier, group, label in groups:
+            output = PDF_DIR / f"{slug59}_{tier}.pdf"
+            pdf_catalog(output, label + ": " + title, query, group,
+                        now.astimezone(KYIV).date(), facets=facets)
+            if tier == "direct":
+                caption = _catalog_caption(
+                    label + ": " + title, query, facets,
+                    len(group), len(group), 0)
+            else:
+                caption = _catalog_caption(
+                    label + ": " + title, query, facets,
+                    len(group), 0, len(group))
+            docs.append({"tier":tier,"path":str(output),"caption":caption})
+        # Keep file identities and selected archive IDs immutable after the
+        # first send. Any mismatched reranking stops instead of duplicating.
+        identity = [
+            (tier, [
+                (int(row["id"]), row.get("_deadline"),
+                 hashlib.sha256((row.get("text") or "").encode("utf-8")).hexdigest())
+                for row in group
+            ]) for tier, group, _ in groups
+        ]
+        fingerprint = hashlib.sha256(
+            json.dumps(identity, ensure_ascii=False,
+                       separators=(",", ":")).encode("utf-8")
+        ).hexdigest()
+        meta = {
+            "title": title, "query": query, "facets": facets,
+            "post_ids": [int(row["id"]) for _, group, _ in groups for row in group],
+            "valid_until": (
+                (now.astimezone(KYIV).date() + timedelta(days=30)).isoformat()
+                if any(row.get("_rolling") for _, group, _ in groups for row in group)
+                else max(row["_deadline"]
+                         for _, group, _ in groups for row in group)),
+            "pdf_sha256": {
+                doc["tier"]: hashlib.sha256(Path(doc["path"]).read_bytes()).hexdigest()
+                for doc in docs
+            },
+            "deadlines_by_tier": {
+                tier: [row.get("_deadline") for row in group]
+                for tier, group, _ in groups
+            },
+        }
+        manifest = ensure_delivery(state, order_id=int(entry["id"]),
+                        fingerprint=fingerprint, documents=docs,
+                        save=save_state, metadata=meta)
+        def checkpoint(current_state: dict) -> None:
+            durable_checkpoint(current_state, save_local=save_state,
+                               state_path=STATE_PATH,
+                               artifact_paths=[Path(doc["path"]) for doc in docs])
+        complete, message_ids = deliver_documents(
+            state, order_id=int(entry["id"]),
+            send=lambda path, caption: upload_pdf(Path(path), caption),
+            save=checkpoint)
+        if not complete:
+            return False
+        finalize_v59_order(state, entry, manifest, message_ids, now)
+        return True
     if not picked:
         mark_no_results(state, entry, 'none_verified')
         state["queue"].pop(0)
@@ -4386,9 +4673,29 @@ def main():
     parser.add_argument("--gateway-sync", action="store_true", help="Синхронізувати каталоги з Cloudflare після Git push")
     parser.add_argument("--gateway-activate", action="store_true", help="Окремо ввімкнути миттєві відповіді через Telegram webhook")
     parser.add_argument("--gateway-deactivate", action="store_true", help="Вимкнути webhook; потім видалити GitHub Secret URL")
+    parser.add_argument("--v59-reconcile-order", type=int, help="ID замовлення після ручної перевірки Telegram")
+    parser.add_argument("--v59-reconcile-tier", choices=("direct", "conditional"), help="Рівень підтвердженого документа")
+    parser.add_argument("--v59-reconcile-message", type=int, help="Фактичний Telegram message_id")
     parser.add_argument("--archive", type=Path, default=ARCHIVE)
     parser.add_argument("--output", type=Path, default=Path("output/demo-catalog.pdf"))
     args = parser.parse_args()
+    if any(x is not None for x in (
+            args.v59_reconcile_order, args.v59_reconcile_tier,
+            args.v59_reconcile_message)):
+        if (not args.v59_reconcile_order or not args.v59_reconcile_tier
+                or not args.v59_reconcile_message):
+            raise RuntimeError("Потрібні всі три параметри підтвердження Telegram")
+        state = load_state()
+        def checkpoint(current_state: dict) -> None:
+            durable_checkpoint(current_state, save_local=save_state,
+                               state_path=STATE_PATH)
+        reconcile_document(state, order_id=args.v59_reconcile_order,
+                           tier=args.v59_reconcile_tier,
+                           message_id=args.v59_reconcile_message,
+                           save=checkpoint)
+        print("Перевірений Telegram ID збережено в durable Git checkpoint. "
+              "Нових повідомлень не надсилали.")
+        return
     if args.demo:
         demo(args.demo, args.archive, args.output)
         return
@@ -4428,7 +4735,24 @@ def main():
     # independent daily status cap. This does not use Cloudflare AI credits.
     if publish_pending_no_results(state):
         save_state(state)
-    if not state["queue"] or not can_publish(state, datetime.now(timezone.utc)):
+    if not state["queue"]:
+        return
+    pending_v59 = (os.environ.get("NGO_GRANTS_V59_LIVE_DELIVERY") == "true"
+                   and str(state["queue"][0]["id"]) in
+                   state.get("v59_deliveries", {}))
+    if not pending_v59 and not can_publish(state, datetime.now(timezone.utc)):
+        return
+    if not pending_v59 and not (os.environ.get("CF_ACCOUNT_ID") and os.environ.get("CF_API_TOKEN")):
+        print("Не вистачає секретів CF_ACCOUNT_ID і CF_API_TOKEN: запити залишаються в черзі.")
+        return
+    if pending_v59:
+        # Manifest recovery never needs AI credentials or a fresh archive scan.
+        try:
+            if resume_v59_delivery(state, state["queue"][0], datetime.now(timezone.utc)):
+                save_state(state)
+        except Exception as exc:
+            print("v5.9: відновлення заблоковано до перевірки: " +
+                  type(exc).__name__, file=sys.stderr)
         return
     if not (os.environ.get("CF_ACCOUNT_ID") and os.environ.get("CF_API_TOKEN")):
         print("Не вистачає секретів CF_ACCOUNT_ID і CF_API_TOKEN: запити залишаються в черзі.")
