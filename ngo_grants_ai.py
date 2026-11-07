@@ -2953,9 +2953,14 @@ def show_catalogs(chat_id: int, state: dict) -> None:
     lines = ["📚 <b>Готові PDF-каталоги у @ngo_grants</b>\n"]
     for item in published:
         title = escape(str(item.get("title", "Тематичний каталог"))[:120])
-        url = str(item.get("channel_url", ""))
-        if re.fullmatch(r"https://t\.me/ngo_grants/\d+", url):
-            lines.append(f"• <a href=\"{url}\">{title}</a>")
+        urls = item.get("channel_urls") or [item.get("channel_url", "")]
+        labels = ("📗 Підтверджені", "📙 Умовні")
+        for position, candidate in enumerate(urls):
+            url = str(candidate or "")
+            if re.fullmatch(r"https://t\\.me/ngo_grants/\\d+", url):
+                suffix = (" — " + labels[position] if
+                          item.get("channel_urls") and position < len(labels) else "")
+                lines.append(f'• <a href="{url}">{title}{suffix}</a>')
     lines.append("\nОберіть каталог і відкрийте PDF безпосередньо у каналі.")
     message(chat_id, "\n".join(lines), reply_markup=UI_KEYBOARD, formatted=True)
 
