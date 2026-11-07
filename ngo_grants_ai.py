@@ -2241,10 +2241,8 @@ def rank_posts(rows: list[dict], query: str, keywords: list[str] | dict,
                 continue
             if not _menu_sector_eligible(content, facets) and not relaxed:
                 continue
-            # Applicant-only and broad-sector searches should remain strict.
-            if not (facets.get('detail') or facets.get('custom_sector')) and not _menu_audience_eligible(
-                    content, facets['audience']):
-                continue
+            # Applicant evidence was already checked with quality_status above.
+            # Do not reapply the former permissive type heuristic here.
         dates = deadline_dates_from_post(content)
         deadline = deadline_from_post(content, now)
         rolling = not dates and ongoing_applications_from_post(content)
@@ -2301,7 +2299,7 @@ def rank_posts(rows: list[dict], query: str, keywords: list[str] | dict,
                 continue
             score = sum(scores)
         applicant = facets['audience'] if facets else plan.get('audience', 'any') if plan else 'any'
-        direct = (_menu_audience_eligible(content, applicant) if facets else
+        direct = ((quality_status(content, facets) == 'direct') if facets else
                   applicant_category_eligible(content, applicant))
         if not direct:
             # Without a specific requested topic, an unrelated applicant type
