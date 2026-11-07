@@ -50,15 +50,40 @@ jobs:
                   print("WORKERS_SCRIPTS_READ_SCOPE_REQUIRED")
           except Exception as e:
               print("WORKERS_SCRIPTS_READ_ERROR",type(e).__name__)
+          # The Workers AI token can belong to an account other than the
+          # one hosting this webhook. Compare the Workers subdomain without
+          # logging it or the endpoint hostname.
+          try:
+              subreq=urllib.request.Request(
+                "https://api.cloudflare.com/client/v4/accounts/"+aid+"/workers/subdomain",
+                headers={"Authorization":"Bearer "+tok,"Accept":"application/json"})
+              with urllib.request.urlopen(subreq,timeout=20) as resp:
+                  subjson=json.load(resp)
+              subdomain=str((subjson.get("result") or {}).get("subdomain") or "")
+              print("WORKERS_ACCOUNT_SUBDOMAIN_PRESENT",bool(subdomain))
+          except urllib.error.HTTPError as e:
+              subdomain=""
+              print("WORKERS_ACCOUNT_SUBDOMAIN_HTTP",e.code)
+          except Exception as e:
+              subdomain=""
+              print("WORKERS_ACCOUNT_SUBDOMAIN_ERROR",type(e).__name__)
           if gate:
               parsed=urlsplit(gate)
               if parsed.scheme!="https" or not parsed.netloc or parsed.path:
                   print("GATEWAY_URL_MALFORMED")
                   raise SystemExit(0)
+              if subdomain:
+                  print("GATEWAY_IN_TOKEN_ACCOUNT",
+                        parsed.hostname.endswith("."+subdomain+".workers.dev"))
               try:
-                  with urllib.request.urlopen(gate+"/health",timeout=15) as resp:
+                  health_req=urllib.request.Request(
+                      gate+"/health",
+                      headers={"User-Agent":"Mozilla/5.0 NGOGrantsHealth/1.0",
+                               "Accept":"application/json"})
+                  with urllib.request.urlopen(health_req,timeout=15) as resp:
                       health=json.loads(resp.read(5000))
-                  print("GATEWAY_HEALTH_OK",health.get("ok") is True,health.get("name","UNKNOWN"))
+                  print("GATEWAY_HEALTH_OK",health.get("ok") is True,
+                        health.get("name","UNKNOWN"))
               except urllib.error.HTTPError as e:
                   print("GATEWAY_HEALTH_HTTP",e.code)
               except Exception as e:
