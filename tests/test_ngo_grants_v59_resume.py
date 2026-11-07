@@ -67,6 +67,16 @@ class ResumeTests(unittest.TestCase):
         checkpoint.assert_not_called()
         self.assertEqual([],self.state["queue"])
 
+    def test_full_delivery_finalizes_even_with_quota_saturated(self):
+        for i,d in enumerate(self.docs):
+            d.update(status="sent", message_id=8301+i,
+                     started_at="2026-11-07T10:00:00+00:00")
+        self.state["published"]=[{"id":991,"published_on":"2026-11-07"}]
+        with patch.object(app,"upload_pdf") as upload:
+            self.assertTrue(app.resume_v59_delivery(self.state,self.entry,NOW))
+        upload.assert_not_called()
+        self.assertEqual([],self.state["queue"])
+
     def test_ambiguous_sending_stops_without_ai_or_resend(self):
         self.docs[0].update(status="sending",
                             started_at="2026-11-07T10:00:00+00:00")
