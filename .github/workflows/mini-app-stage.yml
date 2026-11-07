@@ -37,6 +37,7 @@ jobs:
           node --check worker/mini_app_keyboard_bridge.mjs
           node --test mini-app/tests/keyboard-bridge.test.mjs
           python -m unittest discover -s tests -p 'test_mini_app_worker_patch.py' -v
+          python -m unittest discover -s tests -p 'test_mini_app_candidate_extraction.py' -v
       - name: Fetch deployed v5.8 source in memory-bound runner temp, patch and stage INACTIVE version
         shell: bash
         run: |
