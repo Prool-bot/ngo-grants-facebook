@@ -33,7 +33,7 @@ import urllib.request
 from zoneinfo import ZoneInfo
 from catalog_guard_v57 import quality_status, clarification_questions
 from catalog_presentation_v59 import partition_reviewed_rows
-from ngo_grants_v59_delivery import ensure_delivery, deliver_documents
+from ngo_grants_v59_delivery import ensure_delivery, deliver_documents, reconcile_document
 from ngo_grants_v59_checkpoint import durable_checkpoint
 
 
@@ -4527,9 +4527,29 @@ def main():
     parser.add_argument("--gateway-sync", action="store_true", help="Синхронізувати каталоги з Cloudflare після Git push")
     parser.add_argument("--gateway-activate", action="store_true", help="Окремо ввімкнути миттєві відповіді через Telegram webhook")
     parser.add_argument("--gateway-deactivate", action="store_true", help="Вимкнути webhook; потім видалити GitHub Secret URL")
+    parser.add_argument("--v59-reconcile-order", type=int, help="ID замовлення після ручної перевірки Telegram")
+    parser.add_argument("--v59-reconcile-tier", choices=("direct", "conditional"), help="Рівень підтвердженого документа")
+    parser.add_argument("--v59-reconcile-message", type=int, help="Фактичний Telegram message_id")
     parser.add_argument("--archive", type=Path, default=ARCHIVE)
     parser.add_argument("--output", type=Path, default=Path("output/demo-catalog.pdf"))
     args = parser.parse_args()
+    if any(x is not None for x in (
+            args.v59_reconcile_order, args.v59_reconcile_tier,
+            args.v59_reconcile_message)):
+        if (not args.v59_reconcile_order or not args.v59_reconcile_tier
+                or not args.v59_reconcile_message):
+            raise RuntimeError("Потрібні всі три параметри підтвердження Telegram")
+        state = load_state()
+        def checkpoint(current_state: dict) -> None:
+            durable_checkpoint(current_state, save_local=save_state,
+                               state_path=STATE_PATH)
+        reconcile_document(state, order_id=args.v59_reconcile_order,
+                           tier=args.v59_reconcile_tier,
+                           message_id=args.v59_reconcile_message,
+                           save=checkpoint)
+        print("Перевірений Telegram ID збережено в durable Git checkpoint. "
+              "Нових повідомлень не надсилали.")
+        return
     if args.demo:
         demo(args.demo, args.archive, args.output)
         return
