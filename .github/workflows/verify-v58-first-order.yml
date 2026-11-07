@@ -1,0 +1,59 @@
+name: NGO Grants — verify first v5.8 order (read only)
+on:
+  push:
+    branches: [ops/verify-first-v58-order-20261107]
+    paths: ['.github/workflows/verify-v58-first-order.yml']
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    env:
+      NGO_BOT_GATEWAY_URL: ${{ secrets.NGO_BOT_GATEWAY_URL }}
+      NGO_BOT_SYNC_SECRET: ${{ secrets.NGO_BOT_SYNC_SECRET }}
+    steps:
+      - name: Inspect D1 pending queue via authenticated Worker read-only route
+        shell: bash
+        run: |
+          python - <<'PY'
+          import os,json,urllib.request,urllib.error
+          base=os.environ.get('NGO_BOT_GATEWAY_URL','').rstrip('/')
+          key=os.environ.get('NGO_BOT_SYNC_SECRET','')
+          if not base.startswith('https://') or not key: raise SystemExit('GATEWAY_SECRET_MISSING')
+          req=urllib.request.Request(base+'/internal/pending',headers={
+            'Authorization':'Bearer '+key,
+            'User-Agent':'NGO-Grants-Healthcheck/1.0',
+            'Accept':'application/json',
+          })
+          try:
+            with urllib.request.urlopen(req,timeout=25) as resp:
+              data=json.loads(resp.read(400000))
+            print('PENDING_HTTP_OK',True)
+          except urllib.error.HTTPError as e:
+            print('PENDING_HTTP_ERROR',e.code)
+            raise SystemExit(1)
+          except Exception as e:
+            print('PENDING_NETWORK_ERROR',type(e).__name__)
+            raise SystemExit(1)
+          rows=data.get('requests',[])
+          print('D1_PENDING_COUNT',len(rows))
+          matching=[]
+          for r in rows:
+            f=r.get('facets') or {}
+            topic=(r.get('topic') or '').casefold()
+            is_match=(
+              f.get('audience')=='nonprofit' and
+              ('social' in (f.get('sectors') or []) or 'соціальн' in topic) and
+              f.get('geo')=='ukraine' and
+              (f.get('funding_format')=='grant_only' or 'проєкт' in topic)
+            )
+            if is_match:
+              matching.append({'has_id': isinstance(r.get('id'),int), 'with_detail': bool(f.get('detail')),
+                               'has_role':f.get('applicant_role') in ('lead','partner','either'),
+                               'has_grant_format':f.get('funding_format')=='grant_only',
+                               'requested_today':str(r.get('requested_at','')).startswith('2026-11-07')})
+          print('MATCHING_V58_SOCIAL_GRANT_ORDERS',len(matching))
+          for x in matching[:4]:print('REQUEST_FACETS_VALIDITY',json.dumps(x))
+          print('READ_ONLY_VERIFIED_NO_ACK_NO_D1_WRITE')
+          PY
