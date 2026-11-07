@@ -5,6 +5,7 @@ on:
     branches: [feature/worker-menu-v58]
     paths:
       - 'worker/patch_live_worker_v58.py'
+      - 'worker/stage_worker_v58.py'
       - 'tests/test_worker_menu_v58.mjs'
       - '.github/workflows/worker-menu-v58-ci.yml'
   workflow_dispatch:
@@ -75,3 +76,11 @@ jobs:
         run: node --input-type=module --check < "$RUNNER_TEMP/ngo-worker-v58.mjs"
       - name: Telegram menu v5.8 behavior tests (offline / mocked)
         run: node tests/test_worker_menu_v58.mjs "$RUNNER_TEMP/ngo-worker-v58.mjs"
+      - name: Stage a new inactive Cloudflare Worker version (no production switch)
+        run: python worker/stage_worker_v58.py "$RUNNER_TEMP/ngo-worker-v58.mjs"
+      - name: Preserve safe release identifiers for later review
+        uses: actions/upload-artifact@v4
+        with:
+          name: ngo-worker-v58-staged-ids
+          path: ${{ runner.temp }}/ngo-worker-v58-stage.json
+          retention-days: 7
