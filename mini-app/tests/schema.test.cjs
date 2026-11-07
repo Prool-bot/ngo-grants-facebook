@@ -45,7 +45,7 @@ test('details and custom sector are length bounded',()=>{
 test('preview remains offline: no POST/fetch or Telegram sendData in client',()=>{
  const code=fs.readFileSync(path.join(root,'app.js'),'utf8');
  const html=fs.readFileSync(path.join(root,'index.html'),'utf8');
- assert.doesNotMatch(code,/\\bfetch\\s*\\(|XMLHttpRequest|sendMessage|sendDocument/);
+ assert.doesNotMatch(code,/\bfetch\s*\(|XMLHttpRequest|sendMessage|sendDocument/);
  assert.doesNotMatch(html,/https?:\/\//);
  assert.match(html,/Демонстрація/);
  assert.match(html,/data-native-send="false"/);
