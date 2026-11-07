@@ -168,7 +168,12 @@ def applicant_status(post: str, facets: dict) -> str:
     negative = "\n".join(x for x in sentences if _NEGATIVE.search(x))
     ngo = bool(_NGO.search(positive))
     business = bool(_COMPANY.search(positive))
-    human = bool(_PERSON.search(positive))
+    # "Фізична особа-підприємець" is a registered FOP, not an ordinary
+    # individual applicant. Do not infer non-business eligibility from it.
+    without_fop = re.sub(
+        r"фізичн\\w*\\s+особ\\w*[-– ]\\s*підприємц\\w*",
+        " ", positive)
+    human = bool(_PERSON.search(without_fop))
     muni = bool(_MUNICIPAL.search(positive))
     legal = bool(re.search(r"юридичн\w*\s+особ|legal\s+entit\w*", positive))
     no_ngo = bool(_NGO.search(negative))
@@ -176,10 +181,9 @@ def applicant_status(post: str, facets: dict) -> str:
     no_human = bool(_PERSON.search(negative))
 
     if category == "nonprofit":
-        direct = (ngo or legal) and not no_ngo
-        # A general legal-entity reference does not override a company-only call.
-        if legal and business and not ngo and re.search(r"виключно|лише|only", eligible):
-            direct = False
+        # "Legal entities and FOP" in a jobs/business programme does not
+        # establish that NGOs may submit, even if the term is legally broad.
+        direct = (ngo or (legal and not business)) and not no_ngo
         restricted = no_ngo or not direct
     elif category == "commercial":
         direct = business and not no_company
