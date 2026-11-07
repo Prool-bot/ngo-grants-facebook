@@ -46,5 +46,14 @@ jobs:
                     'conditional:', counts['conditional'],
                     'rejected:', counts['reject'])
           PY
+      - name: Generate synthetic v5.9 direct and conditional staging PDFs
+        run: python scripts/v59_staging_preview.py
+      - name: Upload isolated v5.9 staging PDFs (no Telegram)
+        uses: actions/upload-artifact@v4
+        with:
+          name: ngo-grants-v59-synthetic-two-tiers
+          path: output/v59-staging-preview/*.pdf
+          if-no-files-found: error
+          retention-days: 7
       - name: Check menu JavaScript module syntax
         run: node --input-type=module --check < worker/menu_refinement_v57.js
