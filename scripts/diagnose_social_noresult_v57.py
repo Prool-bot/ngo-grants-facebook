@@ -23,6 +23,7 @@ def main():
     rows=app.read_archive()
     funnel=Counter()
     highlight=[]
+    active_broad=[]
     for row in rows:
         p=row.get('text') or ''
         if not p:continue
@@ -42,11 +43,13 @@ def main():
         rolling=not app.deadline_dates_from_post(p) and app.ongoing_applications_from_post(p)
         if (deadline is not None and deadline < date(2026,11,7)) or (deadline is None and not rolling):continue
         funnel['date']+=1
+        active_broad.append((row['id'],str(deadline),(p.splitlines() or [''])[0][:115]))
         match,score=app._candidate_matches_subject(p,plan)
         if match or relaxed:
             funnel['topic']+=1
             highlight.append((row['id'],score,(p.splitlines() or [''])[0][:90]))
     print('FUNNEL',dict(funnel))
+    print('ACTIVE_BROAD_SECTOR',active_broad[:60])
     print('FINAL_DIAGNOSTIC_CANDIDATES',highlight[:30])
     # Public-post shortlist with social services and eligible NGO:
     relevant=[]
