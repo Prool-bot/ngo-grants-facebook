@@ -57,6 +57,10 @@ jobs:
           windows=set()
           for i in matched:
               windows.update(range(max(0,i-1),min(len(lines),i+2)))
+          # Include complete UI transitions and menu screens for source-level
+          # design; redact secrets and sensitive auth lines below.
+          for start,end in ((114,165),(271,330),(338,371)):
+              windows.update(range(start-1,min(end,len(lines))))
           print('MATCH_LINES',len(matched),'WINDOW_LINES',len(windows))
           # The remaining text is development structure only: do not print
           # credential-related lines, any candidate private numbers, or URLs.
