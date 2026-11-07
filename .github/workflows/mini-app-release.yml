@@ -32,5 +32,7 @@ jobs:
           python-version: '3.12'
       - name: Compile deployment script
         run: python -m py_compile worker/deploy_worker_mini_app.py
+      - name: Prove rollback works before any traffic change
+        run: python -m unittest discover -s tests -p 'test_mini_app_worker_release.py' -v
       - name: Deploy only prevalidated staged version and smoke legacy+new endpoints
         run: python worker/deploy_worker_mini_app.py
