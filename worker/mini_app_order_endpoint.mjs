@@ -120,9 +120,13 @@ export async function handleMiniAppOrder(request,env,deps={}){
   try{
     identity=await validateTelegramInitData(data.initData,env.BOT_TOKEN,{
       maxAgeSeconds:3600});
+  }catch{
+    return json(401,{ok:false,error:"Не вдалося перевірити авторизацію Telegram"});
+  }
+  try{
     facets=normalizeMiniAppFacets(data.facets);
   }catch{
-    return json(401,{ok:false,error:"Не вдалося перевірити дані Telegram або анкету"});
+    return json(400,{ok:false,error:"Некоректні параметри каталогу"});
   }
   try{
     // No partial success, no queue acknowledgement before confirmed commit.
