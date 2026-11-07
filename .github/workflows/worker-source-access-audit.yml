@@ -1,0 +1,66 @@
+name: NGO Grants - Worker source access audit (read only)
+
+on:
+  push:
+    branches:
+      - feature/worker-menu-source-access-v57
+    paths:
+      - .github/workflows/worker-source-access-audit.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    env:
+      CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
+      CF_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
+      NGO_BOT_GATEWAY_URL: ${{ secrets.NGO_BOT_GATEWAY_URL }}
+    steps:
+      - name: Verify Cloudflare Workers Script read scope without exporting source
+        shell: bash
+        run: |
+          python - <<'PY'
+          import os,json,urllib.request,urllib.error
+          from urllib.parse import urlsplit
+          aid=os.environ.get("CF_ACCOUNT_ID","").strip()
+          tok=os.environ.get("CF_API_TOKEN","").strip()
+          gate=os.environ.get("NGO_BOT_GATEWAY_URL","").strip().rstrip("/")
+          if not aid or not tok:
+              print("CLOUDFLARE_ACCOUNT_AND_TOKEN_MISSING")
+              raise SystemExit(0)
+          url="https://api.cloudflare.com/client/v4/accounts/"+aid+"/workers/scripts"
+          req=urllib.request.Request(url,headers={"Authorization":"Bearer "+tok,"Accept":"application/json"})
+          try:
+              with urllib.request.urlopen(req,timeout=20) as resp:
+                  data=json.load(resp)
+              if not data.get("success"):
+                  print("WORKERS_SCRIPTS_LIST_FAILED")
+              else:
+                  scripts=data.get("result") or []
+                  print("WORKERS_SCRIPTS_READ_OK",len(scripts))
+                  for item in scripts:
+                      print("SCRIPT_NAME",item.get("id") or item.get("name") or "UNKNOWN")
+          except urllib.error.HTTPError as e:
+              print("WORKERS_SCRIPTS_READ_HTTP",e.code)
+              if e.code==403:
+                  print("WORKERS_SCRIPTS_READ_SCOPE_REQUIRED")
+          except Exception as e:
+              print("WORKERS_SCRIPTS_READ_ERROR",type(e).__name__)
+          if gate:
+              parsed=urlsplit(gate)
+              if parsed.scheme!="https" or not parsed.netloc or parsed.path:
+                  print("GATEWAY_URL_MALFORMED")
+                  raise SystemExit(0)
+              try:
+                  with urllib.request.urlopen(gate+"/health",timeout=15) as resp:
+                      health=json.loads(resp.read(5000))
+                  print("GATEWAY_HEALTH_OK",health.get("ok") is True,health.get("name","UNKNOWN"))
+              except urllib.error.HTTPError as e:
+                  print("GATEWAY_HEALTH_HTTP",e.code)
+              except Exception as e:
+                  print("GATEWAY_HEALTH_ERROR",type(e).__name__)
+          PY
