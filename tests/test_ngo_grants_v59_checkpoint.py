@@ -61,7 +61,7 @@ class CheckpointTests(unittest.TestCase):
             if k==("rev-parse","HEAD"):return Result("aaa")
             if k==("ls-remote","origin","refs/heads/main"):return Result("bbb\trefs/heads/main")
             return Result()
-        with self.assertRaisesRegex(RuntimeError,"не підтверджено"):
+        with self.assertRaisesRegex(RuntimeError,"підтверджено"):
             durable_checkpoint({},save_local=lambda _:None,
                 state_path=Path("ai_catalogs/state.json"),repo_root=Path("/tmp"),runner=fake)
 
