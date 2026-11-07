@@ -35,10 +35,17 @@ class RealGitCheckpointTests(unittest.TestCase):
 
             changed={"schema_version":1,"v59_deliveries":{
                 "101":{"documents":[{"status":"sending"}]}}}
+            sample_pdf = work/"ai_catalogs"/"pdfs"/"direct.pdf"
+            sample_pdf.parent.mkdir(parents=True,exist_ok=True)
+            sample_pdf.write_bytes(b"%PDF-1.4 test staging only")
             durable_checkpoint(changed,
                 save_local=lambda state:statefile.write_text(
                     json.dumps(state),encoding="utf-8"),
-                state_path=Path("ai_catalogs/state.json"),repo_root=work)
+                state_path=Path("ai_catalogs/state.json"),repo_root=work,
+                artifact_paths=[Path("ai_catalogs/pdfs/direct.pdf")])
+            self.assertEqual(b"%PDF-1.4 test staging only",
+                             subprocess.check_output(["git","show",
+                               "HEAD:ai_catalogs/pdfs/direct.pdf"],cwd=str(work)))
             self.assertEqual(
                 git(work,"rev-parse","HEAD"),
                 git(work,"ls-remote","origin","refs/heads/main").split()[0])
