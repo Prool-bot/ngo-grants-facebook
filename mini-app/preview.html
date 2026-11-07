@@ -1,0 +1,334 @@
+<!doctype html>
+<html lang="uk">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="color-scheme" content="light">
+  <title>NGO Grants AI — грантовий помічник</title>
+  <meta name="description" content="Оформлення тематичного грантового каталогу за допомогою NGO Grants AI">
+  <style>
+:root{color-scheme:light;font:16px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif;--ink:#173052;--muted:#576e86;--blue:#1564c8;--border:#dce6f3;--bg:#f3f7fc}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink)}
+button,input,textarea{font:inherit}
+button{cursor:pointer}
+button:focus-visible,input:focus-visible,textarea:focus-visible{outline:3px solid #5b9af4;outline-offset:3px}
+.shell{width:min(100%,760px);margin:0 auto;min-height:100%;padding:0 16px 24px;background:white}
+.header{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:6px;border-bottom:1px solid var(--border);padding:16px 0 13px}
+.brand{display:flex;gap:9px;align-items:center;font-weight:800;font-size:18px;letter-spacing:-.4px}
+.brand-icon{display:grid;place-items:center;width:32px;height:32px;background:#eaf2ff;color:#1059c2;border-radius:10px}
+.mode{font-size:11px;color:#5c6e81;border:1px solid #dde8f6;border-radius:20px;padding:6px 9px;background:#f8fbff}
+.progress-bar{height:6px;background:#e6eef9;border-radius:20px;overflow:hidden;margin:16px 0 14px}
+.progress-bar>div{height:100%;width:0;background:#2174df;transition:width .25s ease}
+.intro{display:grid;grid-template-columns:minmax(96px,31%) 1fr;gap:14px;align-items:center;padding:8px 0 16px;position:sticky;top:0;background:linear-gradient(#fff 90%,#fffefc);z-index:1;border-bottom:1px solid var(--border)}
+.robot-box{height:clamp(112px,23vw,170px);display:grid;place-items:center;overflow:hidden}
+.robot{height:100%;width:100%;object-fit:contain;display:block;transform-origin:50% 65%}
+.robot.react{animation:ack .45s ease-in-out 1}
+.robot.wave{animation:wave .64s ease-in-out 1}
+.speech{min-width:0}
+.step{font-size:12px;font-weight:750;color:#3167a7}
+h1{font-size:clamp(20px,3.3vw,27px);line-height:1.2;margin:7px 0;letter-spacing:-.55px}
+.speech p{margin:0;font-size:14px;color:var(--muted);line-height:1.45}
+.form-area{padding:18px 0 6px}
+.choices{display:grid;gap:10px}
+.choice,.select-many{width:100%;min-height:51px;border-radius:13px;border:1px solid var(--border);background:#f8fbff;color:var(--ink);display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 15px;font-weight:650;text-align:left}
+.choice:hover,.select-many:hover{border-color:#9bbce7;background:#f0f6ff}
+.choice.selected,.select-many.selected{border:2px solid #2070d9;background:#edf5ff;padding:11px 14px}
+.arrow{color:#1e6dca}
+.extra{display:grid;gap:9px;margin-top:13px}
+.extra[hidden],.summary[hidden],#next[hidden]{display:none}
+.extra label{font-size:13px;font-weight:750;color:#42678d}
+.extra input,.extra textarea{width:100%;padding:12px 14px;border:1px solid #ccdaeb;border-radius:12px;background:#fff;min-height:47px;font-size:16px}
+.primary,.secondary{border-radius:12px;padding:10px 15px;min-height:46px;font-weight:700}
+.primary{background:#1768cd;color:#fff;border:1px solid #1768cd}
+.secondary{background:#f4f8fe;color:#285b92;border:1px solid #dbe5f2}
+button:disabled{opacity:.48;cursor:not-allowed}
+.footer{display:flex;gap:10px;flex-wrap:wrap;margin-top:15px;border-top:1px solid #e6eef7;padding-top:16px}
+.footer .primary{margin-left:auto}
+.error{min-height:18px;color:#a92e2b;font-size:13px;margin:10px 0 0}
+.summary{background:#f7fbff;border:1px solid #dce8f6;border-radius:14px;padding:16px}
+.summary dl{margin:0}
+.summary .row{display:grid;grid-template-columns:130px 1fr;gap:7px;padding:8px 0;border-bottom:1px solid #e4edf7}
+.summary .row:last-of-type{border:0}
+.summary dt{color:#5e7189}
+.summary dd{margin:0;font-weight:650;overflow-wrap:anywhere}
+.summary .notice{margin:15px 0 0;padding:12px;background:#fff6e4;border:1px solid #f1d8a4;border-radius:9px;color:#745016;font-size:13px}
+.disclaimer{font-size:12px;color:#637b93;line-height:1.45;margin:20px 0 0}
+@keyframes ack{0%,100%{transform:translateY(0)}50%{transform:translateY(-4px)}}
+@keyframes wave{0%,100%{transform:rotate(0)}35%{transform:rotate(-3deg)}70%{transform:rotate(2deg)}}
+@media(min-width:740px){body{padding:30px 15px}.shell{border:1px solid #dce8f6;border-radius:24px;padding:0 30px 22px;box-shadow:0 10px 45px #122d5110}.intro{grid-template-columns:185px 1fr}.robot-box{height:175px}}
+@media(max-width:380px){.shell{padding:0 12px 18px}.intro{gap:8px;grid-template-columns:110px 1fr}.robot-box{height:120px}.brand{font-size:16px}.summary .row{grid-template-columns:102px 1fr}}
+@media(prefers-reduced-motion:reduce){.robot.react,.robot.wave{animation:none}.progress-bar>div{transition:none}}
+
+</style>
+</head>
+<body>
+<main class="shell" id="miniApp">
+  <header class="header">
+    <div class="brand"><span class="brand-icon" aria-hidden="true">✦</span><span>NGO Grants AI</span></div>
+    <span class="mode" id="mode">Демонстрація · без надсилання</span>
+  </header>
+  <div class="progress-bar" role="progressbar" aria-label="Прогрес анкети" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="progress"><div id="progressFill"></div></div>
+  <section class="intro" aria-label="Запитання помічника">
+    <div class="robot-box">
+      <img id="robot" class="robot" src="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22200%22%20height%3D%22200%22%20viewBox%3D%220%200%20200%20200%22%3E%3Cimage%20width%3D%22200%22%20height%3D%22200%22%20href%3D%22data%3Aimage%2Fwebp%3Bbase64%2CUklGRp4GAABXRUJQVlA4IJIGAAAwLgCdASrIAMgAPvV2s1QqpyUkI9QKgVAeiWVu4W3A11wLpSOFDd3B3mA83zo%2F%2BqG3m5gU6YxqAdoP9yjTxQ8S56jmFVHjenxfe3RbILH7tYQnNVZUbArwBHmxSLNf8d2hU%2B6JKC62wAhRa0K1NjRUUWhroEP%2BKHGXD%2FhgDOHO%2F48E7Bj9Sk4TUySsMknvP0XL2tZDG2gSTQ05k50IH61cXhUpCCWo1M30hJ1OkHscZIuYfyp0o2oM7IbBS667Wh8%2B4UDGgGkz4AYSPv7DdMN6GfRksd6mpAQmqTqu9wO6qY4v4P9VJUxmNUKUKuxxBI2Dq%2FkPQs6c3uwoxtvGiKU9%2BWwIRoJxxCSpkDWCuLZFsjzXCJsi8zY8e8UOsrqV9OYvCxQm7AN44EI5Ps4EJ0aeKEWF6v220FyKKcuZoFJV%2FVhTQtcL4dQc6zPcHP2fbVN%2FWVrAWN7dzsFp2kM5h%2F7lGT2RlTt1FN8rCbPKlxy8iXUHPLoocRbgTAAA%2FvxkgAAIXLU7AI4vislVkohgOAJpJIneqpWRX57ZVGl%2FVS2eVHFqbdAYhdvy2yl%2BR1%2B%2FkGpq3EofTT8kmlcxAar%2Fo3dCoVpEYrGVimj101LfQAyx3aCt5HsfrdorIvJbS0%2Fh8RvXx7ACnXXJkFzTpuH8GGgjpO%2FZ8qa89WLiHl4I5qaQhBKzOwJy0RUHj2Di5bMSo0cF8Cs4yL5eKdm3YC2A%2BAkJiQUmjMg1V3TCEz%2Bkm8BKWqSVnONp7qhznJtc%2FNEsQJ7gnoWkUKUDF3kH0zs68ivm%2Fl59aBlu01jkAfgT15qQHv0WJw%2Fe2RfjFglos1pKWjlHilAhkd89zMHzwAp8ULIueOwxTw0sL5cMDN9OfXyF5dWpt5rsavctnuIjSDJv5lz3Ib5tVglCLCl8%2BwHiBqbOjB0XYfFfviruu%2FCu0zfkKSsgizrehhhGqWXRcGq%2FMJPu2whC5xXmTf1Uy4VEuE%2Ff4e339btj7oFF3bXprhH%2BWAlZAhnraGIFmqp9%2FgmTJqw52GmTFDhe9BIuQkR6%2BfY1OGZmsjGlDjuaWViH2PYSIwXYQgeplGsFQgWINy7jbWLB0ih7etI2dPg8wEp85OYTB1zPoWZBb9Lx88z5es0YjwqLfkkB0Ybimn2YagARIG9RZjsVN15UBJNaQnfVcjeaqnz0tsbFGmUYYF12nEhdsDxfPr9R5nriGjsv2oIu9ylmgMi2JKLAzAoi%2Bjjrh4jWDX0OWs8FowObxFJa2MpGCmBXAM2DfRclf6T03YBATq66CR%2BONpMfJFJIam79gdRUeqilg%2FaEuAzF%2FuSP3aGpE6fJSm49FG1yPAQ%2B6GuO1GBjNbwFqdq0P3y4yAubqY6wj9TWX83NJiZCumc2YV4TZV2rxkuXiFkmIWUXD80PnzEX2TBvxN7lH0UaBB6TWNP6asxagRubLRXpS%2B3nJTqGNPtSxkyIdXrhrMA3BwtrZX1eA5mwUFyZUWScp9WO6YTDwFTmkaO7htaktcArnBtdZA7IZ8Rm8X%2Bi9CyiQIv3fDNiNMXXGxHjdoXkbqTEuYcHcatFcy%2BqtCW%2FwAAiwP84TGolPCt1HJSNoJB7x8H0eZy0PCQzLVWySMBB5jKNhG1fWY5lpXsorSuYfhG9T7OYximzkgR4chT1dLEMhAftSM%2FUpsnae8lGvAkVct%2FWkIEs2vsxj0KCADPN%2FZ0bDfkMGYrl1am6nalHft4bfKvFrIekxraYfxA0a%2FZZRGPRXj2dkrj4ofMK7vh8BXF7QpikJC8mA67l%2BqsoNLeWXW9HLvjz6nEqEGJEXAkk4FyY3H2s%2BY0cbs6%2FhdVW%2B7Xih6xGXsVUJaNj86rJa37Oed9vgAfxHCP40hwldaq5uO64KZQ4NaMUzR33n9wbXlo3dP7IMSBK8pgmwXhmslgOCuYIpLJcNjz9I93SLstIzwDZm%2FrtjVvyYxf3bZ%2Fyb3hj46JACQu8tv2DzHqFAl7iSoez%2BbehDv8tZoxaKiaKXt07J2YaW5uxSBxgQzGP%2BLOtG1Jh6DDnt21hFJeU3FnLsSCWg%2BlWDMnG0zPVRJSktJdLb5Bmjr3X1G8dYQOMVZ0KHskC9BDERGRy4Tpg0gWl85eR34Ayt%2FLPJS%2FJM1vTvenVhvwl6lC8Dt%2FIbOCei5YP%2FDLbywxW8lqL5DWhU9GCaz9vfzmlcH5ldzIThShzNLTpRyNW9R3aFQss3PaCvJ6sulPtQ0S6Me3GSjvqmkB13FfDM4QAAA%3D%3D%22%2F%3E%3C%2Fsvg%3E" alt="Білий робот NGO Grants AI з усмішкою" width="200" height="200">
+    </div>
+    <div class="speech">
+      <span class="step" id="stepLabel">Крок 1 з 7</span>
+      <h1 id="question">Хто подаватиме заявку?</h1>
+      <p id="hint">Оберіть тип заявника, щоб ми врахували вимоги конкурсів.</p>
+    </div>
+  </section>
+  <section class="form-area" id="formArea" aria-label="Параметри пошуку">
+    <div class="choices" id="choices"></div>
+    <form class="extra" id="extra" hidden>
+      <label for="extraInput" id="extraLabel">Уточніть відповідь</label>
+      <input id="extraInput" autocomplete="off" maxlength="180" placeholder="Напишіть уточнення">
+      <button type="submit" class="primary">Продовжити</button>
+    </form>
+    <p id="error" class="error" role="status" aria-live="polite"></p>
+    <div id="summary" class="summary" hidden></div>
+  </section>
+  <footer class="footer">
+    <button type="button" class="secondary" id="back" disabled>← Назад</button>
+    <button type="button" class="primary" id="next" hidden>Далі →</button>
+    <button type="button" class="secondary" id="reset">Почати спочатку</button>
+  </footer>
+  <p class="disclaimer" id="disclaimer">Це окремий прототип. Реальні замовлення та запити до Telegram/Cloudflare не надсилаються. Обмеження основного бота залишаються чинними.</p>
+</main>
+<script>
+(function(root,factory){
+  'use strict';
+  const api=factory();
+  if(typeof module==='object' && module.exports){module.exports=api;}
+  if(root){root.NgoGrantsSchema=api;}
+})(typeof globalThis==='object'?globalThis:null,function(){
+  'use strict';
+  const audiences={
+    nonprofit:'Громадська організація / благодійний фонд',
+    commercial:'Бізнес / ФОП',
+    individual:'Фізична особа',
+    municipal:'Територіальна громада / орган місцевого самоврядування',
+    institution:'Заклад освіти / наукова установа',
+    all:'Усі типи заявників'
+  };
+  const sectors={
+    social:'Соціальна та гуманітарна сфера',education:'Освіта та наука',
+    culture:'Культура та мистецтво',medical:'Охорона здоров’я',
+    recovery:'Відновлення громад',environment:'Екологія та клімат',
+    agriculture:'Сільське господарство',media:'Медіа та журналістика',
+    rights:'Права людини',business:'Підприємництво',it:'IT та цифровізація',
+    all:'Усі напрями'
+  };
+  const geos={ukraine:'Україна',region:'Конкретний регіон України',
+    international:'Міжнародні можливості',all:'Усі країни'};
+  const regions={
+    vinnytsia:'Вінницька',volyn:'Волинська',dnipro:'Дніпропетровська',
+    donetsk:'Донецька',zhytomyr:'Житомирська',zakarpattia:'Закарпатська',
+    zaporizhzhia:'Запорізька',ivano:'Івано-Франківська',kyiv_obl:'Київська',
+    kirovohrad:'Кіровоградська',luhansk:'Луганська',lviv:'Львівська',
+    mykolaiv:'Миколаївська',odesa:'Одеська',poltava:'Полтавська',
+    rivne:'Рівненська',sumy:'Сумська',ternopil:'Тернопільська',
+    kharkiv:'Харківська',kherson:'Херсонська',khmelnytskyi:'Хмельницька',
+    cherkasy:'Черкаська',chernivtsi:'Чернівецька',chernihiv:'Чернігівська',
+    kyiv_city:'Місто Київ',crimea:'АР Крим / Севастополь'
+  };
+  const roles={lead:'Основний заявник',partner:'Партнер',either:'Обидва варіанти'};
+  const formats={grant_only:'Лише грантове фінансування',any:'Усі формати підтримки'};
+  const allowedKeys=['audience','sectors','geo','region','custom_sector','detail','applicant_role','funding_format'];
+  function sanitizeText(value,max){
+    return String(value||'').trim().replace(/\s+/g,' ').slice(0,max);
+  }
+  function normalize(input){
+    if(!input || typeof input!=='object'||Array.isArray(input))throw Error('Некоректні параметри');
+    const a=input.audience,g=input.geo;
+    if(!Object.prototype.hasOwnProperty.call(audiences,a))throw Error('Оберіть тип заявника');
+    if(!Object.prototype.hasOwnProperty.call(geos,g))throw Error('Оберіть географію');
+    const raw=Array.isArray(input.sectors)?input.sectors:[];
+    if(raw.length>12 || raw.some(x=>!Object.prototype.hasOwnProperty.call(sectors,x)))
+      throw Error('Некоректний набір напрямів');
+    let unique=[...new Set(raw)];
+    const custom=sanitizeText(input.custom_sector,60);
+    if(unique.includes('all'))unique=['all'];
+    if(!unique.length&&!custom)throw Error('Оберіть хоча б один напрям');
+    const region=g==='region'?input.region:'';
+    if(g==='region'&&!Object.prototype.hasOwnProperty.call(regions,region))
+      throw Error('Оберіть область');
+    const role=input.applicant_role||'lead',format=input.funding_format||'any';
+    if(!Object.prototype.hasOwnProperty.call(roles,role))throw Error('Некоректна роль заявника');
+    if(!Object.prototype.hasOwnProperty.call(formats,format))throw Error('Некоректна форма підтримки');
+    return {
+      audience:a,sectors:unique,
+      custom_sector:unique.includes('all')?'':custom,
+      geo:g,region:region||'',
+      detail:sanitizeText(input.detail,180),
+      applicant_role:role,funding_format:format
+    };
+  }
+  function describe(f){
+    const v=normalize(f);
+    return [
+      ['Заявник',audiences[v.audience]],
+      ['Напрями',v.sectors.map(x=>sectors[x]).concat(v.custom_sector?[v.custom_sector]:[]).join(', ')],
+      ['Географія',geos[v.geo]+(v.region?' · '+regions[v.region]:'')],
+      ['Проєкт',v.detail||'Без уточнення'],
+      ['Роль',roles[v.applicant_role]],['Фінансування',formats[v.funding_format]]
+    ];
+  }
+  return {audiences,sectors,geos,regions,roles,formats,allowedKeys,normalize,describe,sanitizeText};
+});
+
+</script>
+<script>
+(()=>{'use strict';
+const root=document.getElementById('miniApp');
+if(!root||root.dataset.initialized)return;
+root.dataset.initialized='1';
+const schema=window.NgoGrantsSchema;
+if(!schema){document.getElementById('error').textContent='Не вдалося завантажити анкету.';return;}
+const el=id=>document.getElementById(id);
+const choices=el('choices'),extra=el('extra'),input=el('extraInput');
+const robot=el('robot'),reduced=window.matchMedia('(prefers-reduced-motion: reduce)');
+const draft={audience:'',sectors:[],geo:'',region:'',detail:'',
+ custom_sector:'',applicant_role:'lead',funding_format:'any'};
+let index=0;
+let reactionTimeout=null;
+let focusExtra=false;
+const pages=[
+ {key:'audience',heading:'Хто подаватиме заявку?',help:'Виберіть тип заявника, щоб ми врахували умови участі.',options:schema.audiences},
+ {key:'sectors',heading:'Які напрями вас цікавлять?',help:'Можна обрати декілька сфер. Гранти перевірятимемо для кожної окремо.',options:schema.sectors,multi:true},
+ {key:'custom_sector',heading:'Потрібен точніший напрям?',help:'За бажанням додайте власний напрям. Можна пропустити.',optional:true,free:true,max:60},
+ {key:'geo',heading:'Де шукаємо можливості?',help:'Географія допомагає відсіяти непридатні конкурси.',options:schema.geos},
+ {key:'region',heading:'Оберіть регіон України',help:'Врахуємо вимоги щодо місця реалізації проєкту.',options:schema.regions,
+   visible:()=>draft.geo==='region'},
+ {key:'detail',heading:'Що саме ви плануєте?',help:'Коротко опишіть діяльність або ідею проєкту. Не зазначайте контакти.',free:true,optional:true,max:180},
+ {key:'applicant_role',heading:'У якій ролі братимете участь?',help:'Конкурси можуть вимагати статусу головного заявника чи партнера.',options:schema.roles},
+ {key:'funding_format',heading:'Яке фінансування вам потрібне?',help:'Виберіть лише гранти або ширший перелік можливостей.',options:schema.formats}
+];
+const label=k=>({audience:'Заявник',sectors:'Сфери',custom_sector:'Інший напрям',geo:'Географія',region:'Регіон',
+ detail:'Діяльність',applicant_role:'Роль',funding_format:'Формат'})[k]||k;
+function visible(){return pages.filter(p=>!p.visible||p.visible());}
+function all(){return visible().length;}
+function page(){return visible()[index]||null;}
+function resetNode(n){n.replaceChildren();}
+function trigger(kind='ack'){
+ if(reactionTimeout!==null)clearTimeout(reactionTimeout);
+ robot.classList.remove('react','wave');
+ if(reduced.matches)return;
+ void robot.offsetWidth;
+ robot.classList.add(kind==='wave'?'wave':'react');
+ reactionTimeout=setTimeout(()=>robot.classList.remove('react','wave'),720);
+}
+function error(msg){el('error').textContent=msg||'';}
+function makeButton(text,value,selected,callback,multi){
+ const b=document.createElement('button');b.type='button';
+ b.className=(multi?'select-many':'choice')+(selected?' selected':'');
+ b.setAttribute('aria-pressed',selected?'true':'false');
+ const textEl=document.createElement('span');textEl.textContent=text;
+ const mark=document.createElement('span');mark.className='arrow';
+ mark.textContent=selected?'✓':multi?'＋':'→';
+ b.append(textEl,mark);b.addEventListener('click',callback);
+ return b;
+}
+function next(){
+ const p=page();
+ if(!p)return;
+ if(p.key==='audience'&&!draft.audience)return error('Оберіть заявника.');
+ if(p.key==='sectors'&&!draft.sectors.length)return error('Оберіть хоча б один напрям.');
+ if(p.key==='geo'&&!draft.geo)return error('Оберіть географію.');
+ if(p.key==='region'&&!draft.region)return error('Оберіть регіон.');
+ index+=1;focusExtra=false;render();trigger('ack');
+}
+function setValue(key,value){
+ draft[key]=value;
+ if(key==='geo'&&value!=='region')draft.region='';
+ error('');
+ next();
+}
+function buttonOptions(p){
+ const multi=Boolean(p.multi);
+ for(const [value,name] of Object.entries(p.options)){
+   const selected=multi?draft.sectors.includes(value):draft[p.key]===value;
+   choices.append(makeButton(name,value,selected,()=>{
+     if(multi){
+       if(value==='all')draft.sectors=['all'];
+       else{
+         const prev=draft.sectors.filter(x=>x!=='all');
+         draft.sectors=prev.includes(value)?prev.filter(x=>x!==value):[...prev,value];
+       }
+       error('');render();trigger('ack');
+     }else{setValue(p.key,value);}
+   },multi));
+ }
+}
+function renderExtra(p){
+ extra.hidden=false;
+ el('extraLabel').textContent=p.key==='detail'?'Опишіть проєкт одним реченням':'Ваш напрям (необов’язково)';
+ input.placeholder=p.key==='detail'?'Наприклад: соціальний транспорт для людей з інвалідністю':'Наприклад: документальне кіно';
+ input.maxLength=p.max;
+ input.value=draft[p.key]||'';
+ el('next').hidden=false;
+ el('next').textContent=draft[p.key]?'Далі →':'Пропустити →';
+}
+function renderSummary(){
+ el('question').textContent='Перевірте свій запит';
+ el('hint').textContent='Це ще демонстрація. Дані не передаватимуться робочому боту.';
+ el('stepLabel').textContent='Підсумок';
+ el('next').hidden=true;
+ const wrap=el('summary');wrap.hidden=false;
+ try{
+  const rows=schema.describe(draft);
+  const dl=document.createElement('dl');
+  for(const [name,value] of rows){const row=document.createElement('div');row.className='row';
+    const dt=document.createElement('dt');dt.textContent=name;const dd=document.createElement('dd');dd.textContent=value;
+    row.append(dt,dd);dl.append(row);}
+  wrap.append(dl);
+  const note=document.createElement('p');note.className='notice';
+  note.textContent='✓ Анкету сформовано локально. Для реального замовлення потрібен захищений серверний API: перевірка Telegram initData, підписки та денного ліміту. Кнопку надсилання навмисно не активовано.';
+  wrap.append(note);
+ }catch(e){error(e.message);index=Math.max(0,index-1);}
+}
+function render(){
+ const steps=all();const p=page(),done=!p;
+ el('progressFill').style.width=(done?100:Math.round(index/steps*100))+'%';
+ el('progress').setAttribute('aria-valuenow',String(done?100:Math.round(index/steps*100)));
+ el('back').disabled=index===0;el('reset').disabled=false;
+ el('stepLabel').textContent='Крок '+(index+1)+' із '+steps;
+ extra.hidden=true;el('next').hidden=true;el('summary').hidden=true;
+ resetNode(choices);resetNode(el('summary'));error('');
+ if(done){renderSummary();return;}
+ el('question').textContent=p.heading;el('hint').textContent=p.help;
+ if(p.options)buttonOptions(p);
+ if(p.free)renderExtra(p);
+ if(p.multi){
+    el('next').hidden=false;el('next').textContent='Продовжити →';el('next').disabled=!draft.sectors.length;
+ }else if(p.options){
+    el('next').hidden=true;el('next').disabled=false;
+ }
+}
+extra.addEventListener('submit',e=>{
+ e.preventDefault();const p=page();if(!p||!p.free)return;
+ const value=schema.sanitizeText(input.value,p.max);
+ if(/https?:\/\/|@|\b[\w.+-]+@[\w.-]+\.[a-z]{2,}\b/i.test(value))
+   return error('Не вказуйте посилань, адрес пошти чи контактних даних.');
+ draft[p.key]=value;next();
+});
+el('next').addEventListener('click',()=>{
+ const p=page();
+ if(p&&p.free){extra.requestSubmit();return;}
+ next();
+});
+el('back').addEventListener('click',()=>{if(index>0){index--;render();trigger('ack');}});
+el('reset').addEventListener('click',()=>{
+ Object.assign(draft,{audience:'',sectors:[],geo:'',region:'',detail:'',
+   custom_sector:'',applicant_role:'lead',funding_format:'any'});
+ index=0;render();trigger('wave');
+});
+if(window.Telegram&&window.Telegram.WebApp){
+ try{window.Telegram.WebApp.ready();window.Telegram.WebApp.expand();}catch(_){}
+}
+render();
+})();
+</script>
+</body>
+</html>
