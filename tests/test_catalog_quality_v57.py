@@ -105,6 +105,33 @@ class QualityV57Tests(unittest.TestCase):
                      "Соціальні проєкти для вразливих груп")
         self.assertEqual(guard.quality_status(collab,f),"conditional")
 
+    def test_real_archived_catalogue_false_positives(self):
+        # The failures originated in seven actual PDF catalogues. The test
+        # reads the public source archive, not rewritten synthetic snippets.
+        archive = {p['id']: p['text'] for p in app.read_archive()}
+        samples = [
+            (facets(detail="Гранти для територіальних громад"),
+             (3524, 3308, 1188, 3527, 3538)),
+            (facets(audience="commercial",sectors=("business",),
+                    detail="Гранти для жіночого підприємництва"),
+             (3441, 3326, 3423, 2713)),
+            (facets(audience="nonprofit",sectors=("all",),geo="international"),
+             (3282, 3577, 3626)),
+            (facets(audience="all",sectors=("rights",)),
+             (3592, 1974, 3207)),
+            (facets(audience="commercial"),
+             (3337, 1672, 3574)),
+            (facets(audience="individual",sectors=("agriculture","social")),
+             (1020, 3715, 2973)),
+        ]
+        for f, ids in samples:
+            for ident in ids:
+                with self.subTest(id=ident, audience=f['audience'],
+                                  topic=f.get('detail') or f['sectors']):
+                    self.assertIn(ident, archive, "Referenced post missing from archive")
+                    self.assertEqual(guard.quality_status(archive[ident],f),
+                                     "reject", f"Unexpectedly eligible: {ident}")
+
     def test_menu_contract_backward_compatible_and_bounded(self):
         legacy=facets(audience="individual",sectors=("agriculture",))
         self.assertEqual(app.normalized_menu_facets(legacy)["audience"],"individual")
