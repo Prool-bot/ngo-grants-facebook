@@ -1,0 +1,73 @@
+name: NGO Grants - Worker menu source map (read only)
+
+on:
+  push:
+    branches: [feature/worker-menu-source-access-v57]
+    paths: [.github/workflows/worker-menu-source-map.yml]
+
+permissions:
+  contents: read
+
+jobs:
+  map:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
+      CF_WORKER_ACCOUNT_ID: ${{ secrets.CF_WORKER_ACCOUNT_ID }}
+      CF_WORKER_API_TOKEN: ${{ secrets.CF_WORKER_API_TOKEN }}
+    steps:
+      - name: Get a bounded, masked structural map of the current Telegram menu
+        shell: bash
+        run: |
+          python - <<'PY'
+          import os,re,urllib.request,urllib.error
+          from email.parser import BytesParser
+          from email import policy
+          aid=(os.getenv('CF_WORKER_ACCOUNT_ID') or os.getenv('CF_ACCOUNT_ID') or '').strip()
+          tok=os.getenv('CF_WORKER_API_TOKEN') or ''
+          req=urllib.request.Request(
+            'https://api.cloudflare.com/client/v4/accounts/'+aid+'/workers/scripts/ngo-grants-instant-bot',
+            headers={'Authorization':'Bearer '+tok,'Accept':'application/javascript,multipart/form-data'})
+          with urllib.request.urlopen(req,timeout=30) as resp:
+              ct=resp.headers.get('content-type','')
+              body=resp.read(200000)
+          if 'multipart/' in ct:
+              msg=BytesParser(policy=policy.default).parsebytes(
+                 b'MIME-Version: 1.0\r\nContent-Type: '+ct.encode()+b'\r\n\r\n'+body)
+              js=[p.get_payload(decode=True).decode('utf-8','replace') for p in msg.walk()
+                  if (p.get_filename() or p.get_param('name',header='content-disposition') or '').endswith(('.js','.mjs'))]
+              if len(js)!=1: raise SystemExit('Unexpected number of JS modules')
+              source=js[0]
+          else:
+              source=body.decode('utf-8','replace')
+          lines=source.splitlines()
+          print('TOTAL_LINES',len(lines))
+          patterns=[
+            r'(?:^|\\b)(?:export|function|async|class|switch|case|const|let)\\s',
+            r'callback_query|callback_data|inline_keyboard|reply_markup',
+            r'\\b(?:draft|sectors|audience|geo|detail|region|confirm|step|AI|D1|menu|request)\\b',
+            r'\\.prepare\\(|\\.exec\\(|getChat|/start|/help|fetch\\(',
+          ]
+          regex=re.compile('|'.join(patterns),re.I)
+          matched=[]
+          for i,line in enumerate(lines):
+              if regex.search(line):
+                  matched.append(i)
+          windows=set()
+          for i in matched:
+              windows.update(range(max(0,i-1),min(len(lines),i+2)))
+          print('MATCH_LINES',len(matched),'WINDOW_LINES',len(windows))
+          # The remaining text is development structure only: do not print
+          # credential-related lines, any candidate private numbers, or URLs.
+          scrubbed=re.compile(
+              r'token|secret|authorization|bearer|password|private.key|'
+              r'(?:https?://)|(?:\\b\\d{11,15}\\b)|'
+              r'(?:[a-z0-9._%+-]+@[a-z0-9.-]+\\.[a-z]{2,})',re.I)
+          for i in sorted(windows)[:350]:
+              line=lines[i]
+              if scrubbed.search(line):
+                  print('L'+str(i+1)+': [REDACTED SENSITIVE LINE]')
+              else:
+                  print('L'+str(i+1)+': '+line[:240])
+          PY
