@@ -1,0 +1,86 @@
+name: NGO Grants Worker v5.8 — safe menu CI
+
+on:
+  push:
+    branches: [feature/worker-menu-v58]
+    paths:
+      - 'worker/patch_live_worker_v58.py'
+      - 'worker/stage_worker_v58.py'
+      - 'tests/test_worker_menu_v58.mjs'
+      - '.github/workflows/worker-menu-v58-ci.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  menu-tests:
+    name: Patch current Worker source and run offline regression tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
+      CF_WORKER_ACCOUNT_ID: ${{ secrets.CF_WORKER_ACCOUNT_ID }}
+      CF_WORKER_API_TOKEN: ${{ secrets.CF_WORKER_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Check patch script syntax
+        run: python -m py_compile worker/patch_live_worker_v58.py
+      - name: Fetch current Worker script (runner memory only) and apply v5.8 patch
+        shell: bash
+        run: |
+          python - <<'PY'
+          import os,urllib.request
+          from email.parser import BytesParser
+          from email import policy
+          from pathlib import Path
+          import sys
+          sys.path.insert(0,'worker')
+          from patch_live_worker_v58 import patch_worker
+          aid=(os.getenv('CF_WORKER_ACCOUNT_ID') or os.getenv('CF_ACCOUNT_ID') or '').strip()
+          token=os.getenv('CF_WORKER_API_TOKEN') or ''
+          if not aid or not token:
+              raise SystemExit('Missing Worker account or scoped token.')
+          req=urllib.request.Request(
+            'https://api.cloudflare.com/client/v4/accounts/'+aid+
+            '/workers/scripts/ngo-grants-instant-bot',
+            headers={'Authorization':'Bearer '+token,'Accept':'application/javascript,multipart/form-data'})
+          with urllib.request.urlopen(req,timeout=30) as resp:
+              ct=resp.headers.get('Content-Type','')
+              body=resp.read(200000)
+          if not body or len(body)>=200000: raise SystemExit('Unexpected Worker source size')
+          if 'multipart/' in ct:
+              msg=BytesParser(policy=policy.default).parsebytes(
+                 b'MIME-Version: 1.0\r\nContent-Type: '+ct.encode()+
+                 b'\r\n\r\n'+body)
+              parts=[p.get_payload(decode=True).decode('utf-8','replace')
+                    for p in msg.walk()
+                    if (p.get_filename() or p.get_param('name',header='content-disposition') or '').endswith(('.js','.mjs'))]
+              if len(parts)!=1: raise SystemExit('Expected a single original JS module')
+              src=parts[0]
+          else:
+              src=body.decode('utf-8','replace')
+          patched=patch_worker(src)
+          out=Path(os.environ.get('RUNNER_TEMP','/tmp'))/'ngo-worker-v58.mjs'
+          out.write_text(patched,encoding='utf-8')
+          print('PATCH_OK; original_lines=',len(src.splitlines()),'patched_lines=',len(patched.splitlines()))
+          print('SOURCE_ONLY_ON_RUNNER; no Telegram requests or D1 mutations')
+          PY
+      - name: Node module syntax verification
+        run: node --input-type=module --check < "$RUNNER_TEMP/ngo-worker-v58.mjs"
+      - name: Telegram menu v5.8 behavior tests (offline / mocked)
+        run: node tests/test_worker_menu_v58.mjs "$RUNNER_TEMP/ngo-worker-v58.mjs"
+      - name: Stage a new inactive Cloudflare Worker version (no production switch)
+        run: python worker/stage_worker_v58.py "$RUNNER_TEMP/ngo-worker-v58.mjs"
+      - name: Preserve safe release identifiers for later review
+        uses: actions/upload-artifact@v4
+        with:
+          name: ngo-worker-v58-staged-ids
+          path: ${{ runner.temp }}/ngo-worker-v58-stage.json
+          retention-days: 7
