@@ -30,8 +30,14 @@ globalThis.fetch=async (uri,opts)=>{
     status:200,headers:{"content-type":"application/json"}
   });
 };
-const worker=await import("data:text/javascript;base64,"+
-  Buffer.from(source).toString("base64"));
+let worker;
+try{
+  worker=await import("data:text/javascript;base64,"+
+    Buffer.from(source).toString("base64"));
+}catch(_error){
+  // Node may put the entire data: URL into a stack trace. Never log it.
+  throw new Error("Private Worker in-memory import failed; source withheld");
+}
 const valid={
   audience:"nonprofit",sectors:["social","recovery"],custom_sector:"",
   geo:"region",region:"kharkiv",detail:"Соціальний транспорт",
