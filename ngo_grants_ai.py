@@ -2957,7 +2957,7 @@ def show_catalogs(chat_id: int, state: dict) -> None:
         labels = ("📗 Підтверджені", "📙 Умовні")
         for position, candidate in enumerate(urls):
             url = str(candidate or "")
-            if re.fullmatch(r"https://t\\.me/ngo_grants/\\d+", url):
+            if re.fullmatch(r"https://t\.me/ngo_grants/\d+", url):
                 suffix = (" — " + labels[position] if
                           item.get("channel_urls") and position < len(labels) else "")
                 lines.append(f'• <a href="{url}">{title}{suffix}</a>')
