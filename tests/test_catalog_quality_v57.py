@@ -130,7 +130,7 @@ class QualityV57Tests(unittest.TestCase):
                                   topic=f.get('detail') or f['sectors']):
                     self.assertIn(ident, archive, "Referenced post missing from archive")
                     self.assertEqual(guard.quality_status(archive[ident],f),
-                                     "reject", f"Unexpectedly eligible: {ident}")
+                                     "reject", f"Unexpectedly eligible: {ident}, eligibility={guard.applicant_evidence(archive[ident])[:700]!r}")
 
     def test_menu_contract_backward_compatible_and_bounded(self):
         legacy=facets(audience="individual",sectors=("agriculture",))
