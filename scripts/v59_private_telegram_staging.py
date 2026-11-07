@@ -113,19 +113,15 @@ def execute(api: TelegramTestAPI, chat_id: str, directory: Path,
         message = api.call("sendDocument", {
             "chat_id":chat_id,
             "caption":"[TEST ONLY] NGO Grants v5.9 "+tier+" — synthetic data",
-            "disable_notification":True,
+            "disable_notification":"true",
         },pdf=pdf)
         msg_id=message.get("message_id")
         if not isinstance(msg_id,int) or msg_id<=0:
             raise RuntimeError("No confirmed Telegram message_id; STOP")
         sent.append({"tier":tier,"status":"sent","message_id":msg_id})
         print(f"V59_TEST_{tier.upper()}_DOCUMENT_CONFIRMED")
-    markup = companion_markup(sent, "@not-used".lstrip("@"))
-    # Use channel numerical ID in edit; URL must be a valid t.me link.
-    # Private channels have no username: use the internal /c/<id> URL.
-    private_id=chat_id.removeprefix("-100")
-    markup["inline_keyboard"][0][0]["url"]=(
-        f"https://t.me/c/{private_id}/{sent[1]['message_id']}")
+    # Explicit private channel ID creates t.me/c/ link; no public URL is used.
+    markup = companion_markup(sent, chat_id)
     edited=api.call("editMessageReplyMarkup",{
         "chat_id":chat_id,
         "message_id":sent[0]["message_id"],
