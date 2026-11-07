@@ -22,7 +22,7 @@ jobs:
         shell: bash
         run: |
           python - <<'PY'
-          import os,urllib.request,urllib.error,re
+          import os,urllib.request,urllib.error,re,json
           from email.parser import BytesParser
           from email import policy
 
@@ -84,5 +84,25 @@ jobs:
           for name,val in findings.items():
               print('RISK_FLAG_'+name.upper(),val)
           print('PUBLIC_SOURCE_EXPORT_SAFE',not any(findings.values()))
+          # Expose only binding types/names; never API tokens, database IDs
+          # or configuration values, which belong in Cloudflare.
+          try:
+              req_settings=urllib.request.Request(
+                  'https://api.cloudflare.com/client/v4/accounts/'+aid+
+                  '/workers/scripts/'+script+'/settings',
+                  headers={'Authorization':'Bearer '+token,
+                           'Accept':'application/json'})
+              with urllib.request.urlopen(req_settings,timeout=20) as res:
+                  settings=json.load(res)
+              data=settings.get('result') or {}
+              bindings=data.get('bindings') or []
+              print('WORKER_SETTINGS_HTTP',200)
+              print('BINDING_TYPES_AND_NAMES',
+                    [(x.get('type'),x.get('name')) for x in bindings])
+              print('WORKER_COMPATIBILITY_DATE',data.get('compatibility_date') or 'NONE')
+          except urllib.error.HTTPError as exc:
+              print('WORKER_SETTINGS_HTTP',exc.code)
+          except Exception as exc:
+              print('WORKER_SETTINGS_ERROR',type(exc).__name__)
           print('READ_ONLY: no code or secrets saved, deployed, or posted.')
           PY
