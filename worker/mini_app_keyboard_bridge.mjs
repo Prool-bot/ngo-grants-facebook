@@ -83,7 +83,7 @@ export function miniAppKeyboard(baseUrl){
   return {
     keyboard:[
       [{text:"🤖 Відкрити грантового помічника",web_app:{url:url.href}}],
-      [{text:"🏠 Головне меню"}]
+      [{text:"/start"}]
     ],
     resize_keyboard:true,
     is_persistent:true
