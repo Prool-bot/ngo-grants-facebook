@@ -13,6 +13,7 @@ import json
 
 STATE=Path("ai_catalogs/state.json")
 COMMENTS=Path("archive/telegram/comments/index.json")
+POLL=Path("reports/mini_app_pilot_poll_3818.json")
 PILOT_POST=3813
 
 def parse_state(data:dict, since="2026-11-07")->dict:
@@ -63,9 +64,21 @@ def comment_summary(meta:dict|None)->dict:
 def main():
     state=json.loads(STATE.read_text("utf-8"))
     comments=json.loads(COMMENTS.read_text("utf-8")) if COMMENTS.exists() else None
+    poll=json.loads(POLL.read_text("utf-8")) if POLL.exists() else None
+    if poll is not None and (
+        poll.get("poll_id")!=3818 or poll.get("anonymous") is not True):
+        raise ValueError("Unexpected feedback poll report")
+    public_poll={"status":"not_yet_read"} if poll is None else {
+        "status":"read_only","total_voters":poll.get("total_voters"),
+        "breakdown_available":poll.get("breakdown_available"),
+        "anonymous":True,
+        "options":poll.get("options")
+    }
     summary={"pilot_post":"https://t.me/ngo_grants/3813",
+             "poll":"https://t.me/ngo_grants/3818",
              "catalog":parse_state(state),
-             "comments":comment_summary(comments)}
+             "comments":comment_summary(comments),
+             "anonymous_poll":public_poll}
     print("NGO_GRANTS_PILOT_PUBLIC_AGGREGATES")
     print(json.dumps(summary,ensure_ascii=False,indent=2,sort_keys=True))
     if summary["catalog"]["new_no_results_individual_business"]>0:
