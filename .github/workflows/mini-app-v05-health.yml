@@ -5,6 +5,8 @@ on:
     branches: [main]
     paths:
       - '.github/workflows/mini-app-v05-health.yml'
+      - 'scripts/mini_app_v05_health_readonly.py'
+      - 'tests/test_mini_app_v05_health_readonly.py'
   schedule:
     - cron: '47 8 * * *'
   workflow_dispatch:
