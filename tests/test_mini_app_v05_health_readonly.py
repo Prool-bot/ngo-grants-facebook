@@ -38,11 +38,22 @@ class HealthTests(TestCase):
        patch.object(MOD,"mini_app_smoke",return_value=True),\
        patch.object(MOD,"inspect",return_value=True),\
        patch.object(MOD,"telegram",return_value={
-         "is_bot":True,"username":"ngogratsAI_bot","has_main_web_app":False
+         "is_bot":True,"username":"ngogratsAI_bot","has_main_web_app":True
        }) as bot:
-   self.assertFalse(MOD.main())
+   self.assertTrue(MOD.main())
    self.assertEqual(api.call_count,1)
    self.assertEqual(bot.call_args.args,("getMe",))
+ def test_live_main_app_registration_regression_is_alerted(self):
+  good={"is_bot":True,"username":"ngogratsAI_bot","has_main_web_app":True}
+  MOD.assess_main_registration(good)
+  for broken in (
+      {**good,"has_main_web_app":False},
+      {**good,"has_main_web_app":None},
+      {**good,"username":"other_bot"},
+      {**good,"is_bot":False},
+  ):
+   with self.assertRaises(RuntimeError):MOD.assess_main_registration(broken)
+
  def test_health_cannot_run_from_unapproved_branch(self):
   with patch.dict(os.environ,{"GITHUB_ACTIONS":"true",
      "GITHUB_REF":"refs/heads/unapproved"},clear=True),\
