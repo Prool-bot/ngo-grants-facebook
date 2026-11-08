@@ -70,15 +70,17 @@ def mark_complete(record,sha):
         raise RuntimeError("Main App enabled but GitHub receipt update failed; do not repeat")
 
 async def wait_url_prompt(client,father,start_id):
-    # Official BotFather's prompt after Enable Mini App asks for a URL.
+    # Require a NEW BotFather message after Enable. Prior help messages
+    # mentioning URLs are not authorization to send a configuration URL.
     for _ in range(20):
         await asyncio.sleep(.7)
         replies=await client.get_messages(father,limit=8)
         for msg in replies:
-            if getattr(msg,"out",False) or (msg.id or 0)<start_id:
+            if getattr(msg,"out",False) or (msg.id or 0)<=start_id:
                 continue
             text=str(getattr(msg,"raw_text","") or "")
-            if re.search(r"(?:\bURL\b|https?://|\blink\b|website|web\s*app)",text,re.I):
+            if (re.search(r"\\b(?:URL|link|website)\\b",text,re.I) and
+                re.search(r"\\b(?:send|provide|enter|specify|paste|please)\\b",text,re.I)):
                 return True
     raise RuntimeError("BotFather did not explicitly request a Mini App URL")
 
