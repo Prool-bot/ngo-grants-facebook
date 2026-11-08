@@ -28,6 +28,16 @@ def assess_deployment(current:dict)->None:
         versions[0].get("percentage")!=100):
         raise RuntimeError("Unexpected live Mini App Cloudflare Worker deployment")
 
+def assess_main_registration(identity:dict)->None:
+    if (identity.get("is_bot") is not True or
+        identity.get("username")!="ngogratsAI_bot"):
+        raise RuntimeError("Existing Telegram bot identity changed")
+    # BotFather registration was independently verified on 2026-11-08.
+    # If Telegram disables it later, fail the daily health check rather than
+    # silently claiming that the direct-link channel entry is still safe.
+    if identity.get("has_main_web_app") is not True:
+        raise RuntimeError("Registered Main Mini App unexpectedly disabled")
+
 def main():
     if (os.environ.get("GITHUB_ACTIONS")!="true" or
         os.environ.get("GITHUB_REF")!="refs/heads/main"):
@@ -42,10 +52,8 @@ def main():
     inspect(origin)
     bot_token=(os.environ.get("NGO_GRANTS_AI_BOT_TOKEN") or "").strip()
     identity=telegram("getMe",token=bot_token)
-    if (identity.get("is_bot") is not True or
-        identity.get("username")!="ngogratsAI_bot"):
-        raise RuntimeError("Existing Telegram bot identity changed")
-    has_main=identity.get("has_main_web_app") is True
+    assess_main_registration(identity)
+    has_main=True
     print("PRODUCTION_MINI_APP_V05_HEALTHY=True")
     print("LEGACY_MINI_APP_V04_AND_MENU_HEALTHY=True")
     print("UNAUTHORIZED_ORDERS_DENIED_AND_NO_D1_WRITES=True")
