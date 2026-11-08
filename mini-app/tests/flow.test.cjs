@@ -92,3 +92,25 @@ test('live Mini App correctly labels real ordering, offline preview stays truthf
  assert.match(offline.nodes.mode.textContent,/Демонстрація/);
  assert.match(offline.nodes.disclaimer.textContent,/прототип/);
 });
+
+test('individual interested in business is warned about FOP eligibility without forced reclassification',()=>{
+ const app=start();
+ const {nodes,option,next,skip}=app;
+ option('Фізична особа');
+ option('Підприємництво');
+ assert.match(nodes.hint.textContent,/зареєстровані як ФОП/);
+ next(); // sectors
+ skip(); // custom sector
+ option('Україна');
+ skip(); // project detail
+ next(); // role
+ next(); // funding
+ assert.equal(nodes.stepLabel.textContent,'Підсумок');
+ const warning=nodes.summary.children.find(x=>x.className==='notice'&&/зареєстрований ФОП/.test(x.textContent));
+ assert.ok(warning,'Warning is required when business interests are chosen by individuals');
+ const change=nodes.summary.children.find(x=>/Я ФОП \/ бізнес/.test(x.textContent));
+ assert.ok(change,'User should be offered an explicit change, not an automatic one');
+ change.click();
+ assert.match(nodes.question.textContent,/Хто подаватиме/);
+ assert.equal(nodes.choices.children[1]['aria-pressed'],'true','Registered FOP/Business should be selected explicitly');
+});

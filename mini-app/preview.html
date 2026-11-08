@@ -283,6 +283,9 @@ function renderExtra(p){
  el('next').hidden=false;
  el('next').textContent=draft[p.key]?'Далі →':'Пропустити →';
 }
+function businessApplicantNeedsReview(){
+ return draft.audience==='individual'&&draft.sectors.includes('business');
+}
 function renderSummary(){
  el('question').textContent='Перевірте свій запит';
  el('hint').textContent=live
@@ -303,6 +306,19 @@ function renderSummary(){
     ?'Після натискання Telegram передасть анкету боту. Він перевірить підписку та денний ліміт і підтвердить замовлення в чаті. Натискання саме по собі ще не означає прийняття.'
     :'✓ Анкету сформовано локально. Це лише демонстрація; замовлення не надсилається.';
   wrap.append(note);
+  if(businessApplicantNeedsReview()){
+    const warn=document.createElement('p');
+    warn.className='notice';
+    warn.textContent='Увага: ви вибрали «Фізична особа» і напрям «Підприємництво». Якщо подаєте заявку як зареєстрований ФОП або бізнес, умови грантів можуть бути іншими. Перевірте свій статус — система не змінює його автоматично.';
+    wrap.append(warn);
+    const choose=document.createElement('button');
+    choose.type='button';choose.className='secondary';
+    choose.textContent='Я ФОП / бізнес — змінити тип заявника';
+    choose.addEventListener('click',()=>{
+      draft.audience='commercial';index=0;render();trigger('ack');
+    });
+    wrap.append(choose);
+  }
   if(live){
     const send=document.createElement('button');
     send.type='button';send.className='primary';send.textContent='✅ Замовити каталог';
@@ -343,6 +359,9 @@ function render(){
  resetNode(choices);resetNode(el('summary'));error('');
  if(done){renderSummary();return;}
  el('question').textContent=p.heading;el('hint').textContent=p.help;
+ if(p.key==='sectors' && businessApplicantNeedsReview()){
+   el('hint').textContent+=' Якщо ви вже зареєстровані як ФОП, на першому кроці оберіть «Бізнес / ФОП».';
+ }
  if(p.options)buttonOptions(p);
  if(p.free)renderExtra(p);
  if(p.multi){
