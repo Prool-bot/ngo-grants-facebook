@@ -26,7 +26,7 @@ class CloudflareRetryTests(unittest.TestCase):
   with patch.dict(os.environ,ENV,clear=False),\
        patch.object(bot,"http_json",side_effect=TimeoutError("write result unknown")) as fetch,\
        patch.object(bot.time,"sleep") as sleep:
-   with self.assertRaises(TimeoutError):
+   with self.assertRaises(RuntimeError):
     bot.gateway_api("/internal/sync",{"requests":[]})
   self.assertEqual(fetch.call_count,1)
   sleep.assert_not_called()
