@@ -15,6 +15,15 @@ STATE=Path("ai_catalogs/state.json")
 COMMENTS=Path("archive/telegram/comments/index.json")
 POLL=Path("reports/mini_app_pilot_poll_3818.json")
 PILOT_POST=3813
+# Signed direct API v0.5 uses 2**51 + 48 HMAC-derived bits for the
+# D1 requests.update_id; legacy Telegram webhook update IDs are below this.
+# This is a transport discriminator, NOT proof of a visible in-channel overlay.
+DIRECT_ID_BASE=2**51
+DIRECT_ID_END=DIRECT_ID_BASE+2**48
+
+def is_direct_api_id(row:dict)->bool:
+    order_id=row.get("id")
+    return type(order_id) is int and DIRECT_ID_BASE <= order_id < DIRECT_ID_END
 
 def parse_state(data:dict, since="2026-11-07")->dict:
     if not isinstance(data,dict):raise ValueError("Invalid catalog state")
@@ -38,6 +47,14 @@ def parse_state(data:dict, since="2026-11-07")->dict:
     multi_tier=sum(
         (x.get("v59_document_count") or 0)>=2 for x in new_published
     )
+    # Report only transport-level aggregate counts. Never return order IDs,
+    # user hashes, facets, individual topics, or raw queue entries.
+    rows=published+no_results+queue
+    complete_ids=all(isinstance(x,dict) and type(x.get("id")) is int
+                     for x in rows)
+    direct_published=sum(is_direct_api_id(x) for x in published if isinstance(x,dict))
+    direct_empty=sum(is_direct_api_id(x) for x in no_results if isinstance(x,dict))
+    direct_synced_queue=sum(is_direct_api_id(x) for x in queue if isinstance(x,dict))
     return {
       "published_total":len(published),
       "no_results_total":len(no_results),
@@ -48,7 +65,13 @@ def parse_state(data:dict, since="2026-11-07")->dict:
       "new_published_by_audience":count_facet(new_published,"audience"),
       "new_no_results_by_audience":count_facet(new_empty,"audience"),
       "new_no_results_individual_business":business_individual_empty,
-      "attribution_to_mini_app":"unknown"
+      "attribution_to_mini_app":"unknown",
+      "direct_v05_api_published":direct_published,
+      "direct_v05_api_no_results":direct_empty,
+      "direct_v05_api_git_queue":direct_synced_queue,
+      "direct_v05_api_seen_total":direct_published+direct_empty+direct_synced_queue,
+      "direct_v05_api_id_coverage":"complete" if complete_ids else "partial",
+      "direct_v05_api_overlay_confirmed":False
     }
 
 def comment_summary(meta:dict|None)->dict:
@@ -81,6 +104,8 @@ def main():
              "anonymous_poll":public_poll}
     print("NGO_GRANTS_PILOT_PUBLIC_AGGREGATES")
     print(json.dumps(summary,ensure_ascii=False,indent=2,sort_keys=True))
+    if summary["catalog"]["direct_v05_api_seen_total"]>0:
+        print("DIRECT_V05_SIGNED_API_ORDER_OBSERVED=True; TELEGRAM_OVERLAY_UNVERIFIED=True")
     if summary["catalog"]["new_no_results_individual_business"]>0:
         print("QA_WARNING=Individual applicant selected a business area; "
               "check whether applicant is an FOP before rerunning the search.")
