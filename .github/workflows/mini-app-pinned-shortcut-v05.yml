@@ -1,0 +1,33 @@
+name: NGO Grants — make already pinned post 3813 a minimal Find Grants button
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/mini-app-pinned-shortcut-v05.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ngo-grants-main-mini-app-channel-pilot
+  cancel-in-progress: false
+
+jobs:
+  pinned_shortcut:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      NGO_GRANTS_AI_BOT_TOKEN: ${{ secrets.NGO_GRANTS_AI_BOT_TOKEN }}
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      NGO_MINI_APP_PINNED_SHORTCUT_APPROVED: 'YES_MINIMAL_EDIT_PINNED_3813_ONCE'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - name: Check strict one-button pinned text and safety offline
+        run: |
+          python -m py_compile scripts/mini_app_pinned_shortcut_v05.py
+          python -m unittest discover -s tests -p 'test_mini_app_pinned_shortcut_v05.py' -v
+      - name: Edit existing pinned post 3813 only, with one direct Mini App button
+        run: python scripts/mini_app_pinned_shortcut_v05.py
