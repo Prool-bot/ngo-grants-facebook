@@ -1,8 +1,9 @@
 {
-  "status": "attempted",
+  "status": "verified_enabled",
   "kind": "BotFather Main Mini App enable",
   "existing_bot": "@ngogratsAI_bot",
   "target_url": "https://ngo-grants-instant-bot.oleh-protasoff.workers.dev/mini-app/direct",
   "started_at": "2026-11-08T10:28:36.754789+00:00",
-  "run_id": "42471560344"
+  "run_id": "42471560344",
+  "verified_at": "2026-11-08T10:28:40.653994+00:00"
 }
