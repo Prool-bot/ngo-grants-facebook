@@ -194,8 +194,35 @@ const draft={audience:'',sectors:[],geo:'',region:'',detail:'',
 let index=0;
 let reactionTimeout=null;
 const live=root.dataset.nativeSend==='true';
-el('mode').textContent=live?'Telegram · грантовий помічник':'Демонстрація · без надсилання';
-el('disclaimer').textContent=live
+const direct=root.dataset.directSend==='true';
+if(live&&direct){
+  el('error').textContent='Помилка конфігурації застосунку: оберіть один спосіб надсилання.';
+  return;
+}
+// Direct mode is NEVER enabled in public/preview HTML. It requires a
+// separate BotFather main-app launch and an explicitly live order API.
+let directController=null;
+if(direct){
+ try{
+  const factory=window.NgoGrantsDirectClient;
+  const api=window.Telegram&&window.Telegram.WebApp;
+  if(!factory||!api||typeof api.initData!=='string'||!api.initData||
+     !window.crypto||typeof window.crypto.randomUUID!=='function'||
+     !window.location||!/^https:\/\//.test(window.location.origin))
+    throw Error('Немає захищеного Telegram-сеансу');
+  directController=factory.createController({
+    enabled:true,webApp:api,schema,
+    post:window.fetch.bind(window),
+    randomUUID:()=>window.crypto.randomUUID(),
+    origin:window.location.origin
+  });
+ }catch(_){directController=null;}
+}
+el('mode').textContent=direct?'Telegram · пошук із каналу':
+  live?'Telegram · грантовий помічник':'Демонстрація · без надсилання';
+el('disclaimer').textContent=direct
+ ?'Використовуйте тільки захищений запуск із Telegram. Успішне замовлення підтверджується номером після запису в серверну чергу.'
+ :live
  ?'Замовлення буде передано до Telegram лише після натискання «Замовити каталог» на останньому кроці. Діють правила підписки та денні ліміти.'
  :'Це окремий прототип. Реальні замовлення та запити до Telegram/Cloudflare не надсилаються.';
 let focusExtra=false;
@@ -288,7 +315,9 @@ function businessApplicantNeedsReview(){
 }
 function renderSummary(){
  el('question').textContent='Перевірте свій запит';
- el('hint').textContent=live
+ el('hint').textContent=direct
+  ?'Перевірте параметри. Після підтвердження замовлення надійде до серверної черги; номер замовлення з’явиться тут.'
+  :live
   ?'Перевірте параметри. Лише кнопка «Замовити каталог» передасть замовлення Telegram-боту.'
   :'Це демонстрація. Дані не передаватимуться робочому боту.';
  el('stepLabel').textContent='Підсумок';
@@ -302,7 +331,9 @@ function renderSummary(){
     row.append(dt,dd);dl.append(row);}
   wrap.append(dl);
   const note=document.createElement('p');note.className='notice';
-  note.textContent=live
+  note.textContent=direct
+    ?'Замовлення буде підтверджено лише після серверної перевірки підписки, ліміту та успішного запису в чергу. Відкривати чат бота не потрібно.'
+    :live
     ?'Після натискання Telegram передасть анкету боту. Він перевірить підписку та денний ліміт і підтвердить замовлення в чаті. Натискання саме по собі ще не означає прийняття.'
     :'✓ Анкету сформовано локально. Це лише демонстрація; замовлення не надсилається.';
   wrap.append(note);
@@ -319,7 +350,38 @@ function renderSummary(){
     });
     wrap.append(choose);
   }
-  if(live){
+  if(direct){
+    const send=document.createElement('button');
+    send.type='button';send.className='primary';
+    send.textContent='✅ Замовити каталог';
+    send.style.marginTop='14px';
+    if(!directController){
+      send.disabled=true;
+      note.textContent='Безпечне замовлення поки недоступне: відкрийте застосунок через перевірене посилання в Telegram.';
+    }else{
+      send.addEventListener('click',async()=>{
+        if(send.disabled)return;
+        send.disabled=true;
+        send.textContent='Перевіряємо й записуємо замовлення…';
+        error('');
+        try{
+          const result=await directController.submit(draft);
+          // NO success unless the server returned a durable order receipt.
+          note.textContent='✅ Замовлення №'+result.orderId+
+            (result.status==='existing'?' уже зареєстровано.':' зареєстровано.')+
+            ' Стежте за результатами в каналі @ngo_grants.';
+          send.textContent='Замовлення підтверджено';
+          trigger('ack');
+        }catch(ex){
+          send.disabled=false;
+          send.textContent='↻ Повторити підтвердження';
+          error(ex&&typeof ex.message==='string'?ex.message:
+            'Не вдалося підтвердити замовлення. Перевірте підключення.');
+        }
+      });
+    }
+    wrap.append(send);
+  }else if(live){
     const send=document.createElement('button');
     send.type='button';send.className='primary';send.textContent='✅ Замовити каталог';
     send.style.marginTop='14px';
