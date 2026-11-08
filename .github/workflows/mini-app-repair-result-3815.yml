@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - '.github/workflows/mini-app-repair-result-3815.yml'
+      - 'scripts/mini_app_repair_result_3815.py'
 
 permissions:
   contents: write

@@ -14,9 +14,12 @@ import json
 import os
 from pathlib import Path
 import re
+import sys
 import urllib.error
 import urllib.request
 
+# GitHub Actions invokes this file by path; add the repo root explicitly.
+sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 import ngo_grants_ai as app
 from mini_app_public_preflight import telegram, CHANNEL
 from mini_app_public_launch import github_api
