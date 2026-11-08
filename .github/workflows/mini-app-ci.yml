@@ -4,6 +4,8 @@ on:
   pull_request:
     paths:
       - "mini-app/**"
+      - "scripts/mini_app_pilot_report.py"
+      - "tests/test_mini_app_pilot_report.py"
       - "scripts/mini_app_enable_main_botfather_once.py"
       - "tests/test_mini_app_enable_main_botfather_once.py"
       - ".github/workflows/mini-app-enable-main-botfather.yml"
@@ -96,6 +98,8 @@ jobs:
         run: |
           python -m py_compile scripts/mini_app_enable_main_botfather_once.py
           python -m unittest discover -s tests -p 'test_mini_app_enable_main_botfather_once.py' -v
+      - name: Verify privacy-safe v0.5 direct API attribution in pilot reports
+        run: python -m unittest discover -s tests -p 'test_mini_app_pilot_report.py' -v
       - name: Publish preview files as CI artifact, not a public deployment
         uses: actions/upload-artifact@v4
         with:
