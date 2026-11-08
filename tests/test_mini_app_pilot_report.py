@@ -39,6 +39,36 @@ class PilotTests(TestCase):
     self.assertEqual(out["pilot_post_comment_count"],3)
     with self.assertRaises(ValueError):
       mod.comment_summary({**meta,"channel":"other"})
+ def test_v05_signed_api_orders_attributed_without_identifying_anyone(self):
+    base=mod.DIRECT_ID_BASE
+    state={
+      "published":[{"id":base+101,"published_on":"2026-11-08",
+                    "topic":"confidential beneficiary story","user_hash":"secret-hash"},
+                   {"id":272839100,"published_on":"2026-11-08"}],
+      "no_results":[{"id":base+202,"checked_on":"2026-11-08",
+                      "topic":"private project","chat_id":456}],
+      "queue":[{"id":base+303,"user_id":789}]
+    }
+    result=mod.parse_state(state)
+    self.assertEqual(result["direct_v05_api_published"],1)
+    self.assertEqual(result["direct_v05_api_no_results"],1)
+    self.assertEqual(result["direct_v05_api_git_queue"],1)
+    self.assertEqual(result["direct_v05_api_seen_total"],3)
+    self.assertEqual(result["direct_v05_api_id_coverage"],"complete")
+    self.assertIs(result["direct_v05_api_overlay_confirmed"],False)
+    for secret in ["secret-hash","confidential","private project","456","789"]:
+      self.assertNotIn(secret,repr(result))
+
+ def test_v05_id_edges_and_unknown_ids_cannot_claim_full_coverage(self):
+    base=mod.DIRECT_ID_BASE
+    state={"published":[{"id":base-1},{"id":base},{"id":mod.DIRECT_ID_END-1},
+                        {"id":mod.DIRECT_ID_END},{"id":str(base)},{"id":True}],
+           "no_results":[],"queue":[]}
+    result=mod.parse_state(state)
+    self.assertEqual(result["direct_v05_api_seen_total"],2)
+    self.assertEqual(result["direct_v05_api_id_coverage"],"partial")
+    self.assertIs(result["direct_v05_api_overlay_confirmed"],False)
+
  def test_bad_state_fail_closed(self):
     with self.assertRaises(ValueError):
       mod.parse_state({"published":"invalid","no_results":[],"queue":[]})
