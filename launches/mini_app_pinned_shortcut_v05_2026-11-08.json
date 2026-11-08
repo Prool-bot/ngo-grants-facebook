@@ -1,5 +1,5 @@
 {
-  "status": "attempted",
+  "status": "verified_pinned_single_button",
   "operation": "editMessageText",
   "channel": "@ngo_grants",
   "message_id": 3813,
@@ -8,5 +8,6 @@
   "main_url": "https://t.me/ngogratsAI_bot?startapp=ngo_grants",
   "pinned_before": true,
   "started_at": "2026-11-08T11:35:53.314388+00:00",
-  "run_id": "42476444786"
+  "run_id": "42476444786",
+  "verified_at": "2026-11-08T11:35:55.194171+00:00"
 }
