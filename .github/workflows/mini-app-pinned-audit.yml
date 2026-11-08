@@ -1,0 +1,30 @@
+name: NGO Grants channel — read-only pinned Mini App audit
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/mini-app-pinned-audit.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      NGO_GRANTS_AI_BOT_TOKEN: ${{ secrets.NGO_GRANTS_AI_BOT_TOKEN }}
+      TELEGRAM_API_ID: ${{ secrets.TELEGRAM_API_ID }}
+      TELEGRAM_API_HASH: ${{ secrets.TELEGRAM_API_HASH }}
+      TELEGRAM_SESSION: ${{ secrets.TELEGRAM_SESSION }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - name: Syntax check (no writes)
+        run: python -m py_compile scripts/mini_app_pinned_preflight_readonly.py
+      - name: Install Telegram session client
+        run: python -m pip install telethon==1.45.0
+      - name: Inspect only public post #3813 pin/rights (no chat writes)
+        run: python scripts/mini_app_pinned_preflight_readonly.py
