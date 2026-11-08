@@ -10,6 +10,7 @@ on:
       - '.github/workflows/telegram-archive.yml'
   schedule:
     - cron: '17 3 * * *'
+    - cron: '17 15 * * *'
   workflow_dispatch:
     inputs:
       full_sync:
