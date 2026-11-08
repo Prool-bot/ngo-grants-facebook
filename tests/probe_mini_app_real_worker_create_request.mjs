@@ -9,7 +9,7 @@ import assert from 'node:assert/strict';
 const filename=process.argv[2];
 if(!filename)throw Error('Expected private Worker JS path from runner');
 let original=readFileSync(filename,'utf8');
-assert.match(original,/NGO_MINI_APP_FOP_STATUS_HINT_V04/);
+if(!/NGO_MINI_APP_FOP_STATUS_HINT_V04/.test(original)) throw Error('Expected approved Worker marker');
 assert.match(original,/menu_version:'5\.8'/);
 const tell=/async function tell\(env,chatId,text,markup=null,editId=null\)\{[\s\S]*?\n\}/;
 assert.equal((original.match(tell)||[]).length,1,'Expected exactly one Telegram message helper');
