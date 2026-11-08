@@ -1,0 +1,12 @@
+{
+  "status": "attempted",
+  "operation": "editMessageText",
+  "channel": "@ngo_grants",
+  "message_id": 3813,
+  "target": "https://t.me/ngo_grants/3813",
+  "label": "🤖 Знайти гранти",
+  "main_url": "https://t.me/ngogratsAI_bot?startapp=ngo_grants",
+  "pinned_before": true,
+  "started_at": "2026-11-08T11:35:53.314388+00:00",
+  "run_id": "42476444786"
+}
