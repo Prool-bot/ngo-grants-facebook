@@ -1,0 +1,58 @@
+name: NGO Grants Mini App v0.5 — enabled API private staging ONLY
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/mini-app-direct-v05-active-stage.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ngo-grants-worker-production-deploy
+  cancel-in-progress: false
+
+jobs:
+  prepare_active_candidate:
+    name: Verify enabled authenticated backend using FAKE D1; upload inactive Worker
+    runs-on: ubuntu-latest
+    timeout-minutes: 11
+    env:
+      CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
+      CF_WORKER_ACCOUNT_ID: ${{ secrets.CF_WORKER_ACCOUNT_ID }}
+      CF_WORKER_API_TOKEN: ${{ secrets.CF_WORKER_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Verify exact one-flag activation and regression test code
+        run: |
+          python -m py_compile worker/activate_mini_app_direct_v05_candidate.py
+          python -m unittest discover -s tests -p 'test_mini_app_direct_v05_activation.py' -v
+          node --check tests/test_mini_app_direct_worker_active_v05.mjs
+      - name: Upload an enabled but NOT deployed v0.5 order API version after fake-D1 E2E
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          scratch="$(mktemp -d "${RUNNER_TEMP}/mini-app-v05-enabled.XXXXXX")"
+          trap 'rm -rf "$scratch"' EXIT
+          # Confirm live Worker is STILL v0.4 and latest uploaded source is
+          # exact verified inactive v0.5, not private production source.
+          python worker/read_live_mini_app_v04_contract.py "$scratch/v05-disabled.mjs"
+          python worker/activate_mini_app_direct_v05_candidate.py             "$scratch/v05-disabled.mjs" "$scratch/v05-enabled.mjs"
+          node --check "$scratch/v05-enabled.mjs"
+          node tests/test_worker_menu_v58.mjs "$scratch/v05-enabled.mjs"
+          node tests/test_mini_app_worker_mock.mjs "$scratch/v05-enabled.mjs"
+          node tests/test_mini_app_start_direct_worker.mjs "$scratch/v05-enabled.mjs"
+          node tests/test_mini_app_actual_worker_order_bridge_e2e.mjs "$scratch/v05-enabled.mjs"
+          node tests/test_mini_app_direct_worker_active_v05.mjs "$scratch/v05-enabled.mjs"
+          # Upload only an inactive version. Do not switch Cloudflare traffic.
+          python worker/stage_worker_mini_app.py "$scratch/v05-enabled.mjs"
+          echo 'ENABLED_V05_WORKER_TESTED_AND_STAGED_INACTIVE_ONLY'
+          echo 'PRODUCTION_V04_REMAINS_AT_100_PERCENT'
+          echo 'REAL_USER_REQUESTS=0;REAL_D1_WRITES=0;REAL_TELEGRAM_MESSAGES=0'
