@@ -1,0 +1,35 @@
+name: NGO Grants Mini App — anonymous public pilot poll
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/mini-app-pilot-poll.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ngo-grants-mini-app-pilot-poll-20261108
+  cancel-in-progress: false
+
+jobs:
+  create_anonymous_poll:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      NGO_GRANTS_AI_BOT_TOKEN: ${{ secrets.NGO_GRANTS_AI_BOT_TOKEN }}
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      NGO_MINI_APP_PILOT_POLL_APPROVED: 'YES_ANONYMOUS_POLL_ONCE'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Test announcement and anonymous poll without Telegram writes
+        run: |
+          python -m py_compile scripts/mini_app_pilot_anonymous_poll.py
+          python -m unittest discover -s tests -p 'test_mini_app_pilot_anonymous_poll.py' -v
+      - name: Create exactly one anonymous poll and correct existing announcement #3813
+        run: python scripts/mini_app_pilot_anonymous_poll.py
