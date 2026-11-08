@@ -131,7 +131,7 @@ def patch(base:str,root:Path)->str:
 """
     base=once(base,FETCH_ANCHOR,FETCH_ANCHOR+route,"HTTP endpoint")
     if (base.count(DIRECT_MARKER)!=1 or base.count(DISABLED_FLAG)!=1 or
-        base.count("/api/mini-app/order")!=1 or
+        base.count('if(__directPath==="/api/mini-app/order"){')!=1 or
         base.count("if(env&&env.__miniAppHttpOrderMode===true)")!=1):
         raise RuntimeError("Direct Mini App staging verification failed")
     return base
