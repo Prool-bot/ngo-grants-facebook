@@ -46,6 +46,10 @@ CHANNEL = "ngo_grants"
 # Never put an unverified username into a public Telegram post or PDF.
 BOT = "ngoGrantsAI_bot"  # legacy reference only; NEVER use as a public link
 VERIFIED_BOT_USERNAME: str | None = None
+VERIFIED_MAIN_MINI_APP: bool = False
+# Registered and verified Main Mini App of the EXISTING NGO Grants AI bot.
+# Never send public channel readers to the private bot chat by default.
+MAIN_MINI_APP_START = "https://t.me/ngogratsAI_bot?startapp=ngo_grants"
 
 
 
@@ -56,8 +60,10 @@ VERIFIED_BOT_USERNAME: str | None = None
 
 def verified_order_url() -> str | None:
     """Only a username confirmed by Telegram getMe may become a public link."""
-    if VERIFIED_BOT_USERNAME and re.fullmatch(r"[A-Za-z][A-Za-z0-9_]{4,31}", VERIFIED_BOT_USERNAME):
-        return f"https://t.me/{VERIFIED_BOT_USERNAME}"
+    if (VERIFIED_MAIN_MINI_APP and VERIFIED_BOT_USERNAME and
+            VERIFIED_BOT_USERNAME.lower() == "ngogratsai_bot" and
+            re.fullmatch(r"[A-Za-z][A-Za-z0-9_]{4,31}", VERIFIED_BOT_USERNAME)):
+        return MAIN_MINI_APP_START
     return None
 
 
@@ -69,15 +75,20 @@ def verified_order_url() -> str | None:
 
 def refresh_bot_identity() -> None:
     """Check the actual Bot API identity on each scheduled run, no guessing."""
-    global VERIFIED_BOT_USERNAME
+    global VERIFIED_BOT_USERNAME, VERIFIED_MAIN_MINI_APP
     VERIFIED_BOT_USERNAME = None
+    VERIFIED_MAIN_MINI_APP = False
     try:
         info = tg('getMe', {}).get('result') or {}
         username = str(info.get('username') or '')
         if info.get('is_bot') is True and username.lower().endswith('bot') and re.fullmatch(
                 r'[A-Za-z][A-Za-z0-9_]{4,31}', username):
             VERIFIED_BOT_USERNAME = username
+            VERIFIED_MAIN_MINI_APP = (username.lower() == 'ngogratsai_bot' and
+                                      info.get('has_main_web_app') is True)
             print('Telegram: перевірено актуальне ім’я бота через getMe.')
+            if not VERIFIED_MAIN_MINI_APP:
+                print('Telegram: прямий Main Mini App не підтверджено; публічне посилання приховано.')
         else:
             print('Telegram: Bot API не повернув перевіреного username; посилання на бота приховано.')
     except RuntimeError:
@@ -93,7 +104,7 @@ def refresh_bot_identity() -> None:
 
 def order_link_line() -> str:
     link = verified_order_url()
-    return f'🤖 Замовити добірку: {link}' if link else ''
+    return f'🤖 Знайти гранти: {link}' if link else ''
 
 
 
@@ -4240,6 +4251,9 @@ def publish_pending_no_results(state: dict, *, now: datetime | None = None) -> b
                 'text': public_no_results_text(item),
                 'parse_mode': 'HTML',
                 'disable_web_page_preview': True,
+                **({'reply_markup': {'inline_keyboard': [[{
+                    'text': '🤖 Знайти гранти', 'url': verified_order_url()
+                }]]}} if verified_order_url() else {}),
             })
             message_id = int(response['result']['message_id'])
         except (RuntimeError, ValueError, TypeError, KeyError) as exc:
