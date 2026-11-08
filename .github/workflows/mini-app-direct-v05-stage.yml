@@ -1,0 +1,59 @@
+name: NGO Grants Mini App v0.5 — private direct order backend staging
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/mini-app-direct-v05-stage.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ngo-grants-worker-production-deploy
+  cancel-in-progress: false
+
+jobs:
+  stage:
+    name: Validate signed order API in fake D1, upload inactive Worker only
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
+      CF_WORKER_ACCOUNT_ID: ${{ secrets.CF_WORKER_ACCOUNT_ID }}
+      CF_WORKER_API_TOKEN: ${{ secrets.CF_WORKER_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Validate strict Worker patch, signed auth, daily quota and idempotent receipt
+        run: |
+          python -m py_compile worker/patch_live_worker_mini_app_direct_v05.py worker/build_mini_app_direct_v05_candidate.py
+          python -m unittest discover -s tests -p 'test_mini_app_direct_v05_patch.py' -v
+          node --check worker/mini_app_live_d1_adapter.mjs
+          node --check tests/test_mini_app_direct_worker_v05.mjs
+          node --test mini-app/tests/*.test.cjs mini-app/tests/*.test.mjs
+      - name: Recover verified v0.4 Worker, test v0.5 direct API in fake DB, upload dormant version
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          scratch="$(mktemp -d "${RUNNER_TEMP}/ngo-miniapp-direct-v05.XXXXXX")"
+          trap 'rm -rf "$scratch"' EXIT
+          # Strict deployment check: active production must still be v0.4.
+          # The latest uploaded source is a known dormant D1-schema probe.
+          python worker/read_live_mini_app_v04_contract.py "$scratch/schema-probe-private.mjs"
+          python worker/build_mini_app_direct_v05_candidate.py             "$scratch/schema-probe-private.mjs" "$scratch/direct-v05-private.mjs"
+          node --check "$scratch/direct-v05-private.mjs"
+          node tests/test_worker_menu_v58.mjs "$scratch/direct-v05-private.mjs"
+          node tests/test_mini_app_worker_mock.mjs "$scratch/direct-v05-private.mjs"
+          node tests/test_mini_app_start_direct_worker.mjs "$scratch/direct-v05-private.mjs"
+          node tests/test_mini_app_actual_worker_order_bridge_e2e.mjs "$scratch/direct-v05-private.mjs"
+          node tests/test_mini_app_direct_worker_v05.mjs "$scratch/direct-v05-private.mjs"
+          # Do not change any live Cloudflare traffic or send Telegram messages.
+          python worker/stage_worker_mini_app.py "$scratch/direct-v05-private.mjs"
+          echo 'V05_DIRECT_ORDER_BACKEND_UPLOADED_DORMANT_ONLY'
+          echo 'DIRECT_API_COMPILE_TIME_DISABLED_AND_NO_REAL_CATALOG_ORDER'
