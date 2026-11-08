@@ -4,6 +4,9 @@ on:
   pull_request:
     paths:
       - "mini-app/**"
+      - "scripts/mini_app_channel_direct_pilot_v05.py"
+      - "tests/test_mini_app_channel_direct_pilot_v05.py"
+      - ".github/workflows/mini-app-channel-direct-pilot-v05.yml"
       - "scripts/mini_app_pilot_report.py"
       - "tests/test_mini_app_pilot_report.py"
       - "scripts/mini_app_enable_main_botfather_once.py"
@@ -100,6 +103,10 @@ jobs:
           python -m unittest discover -s tests -p 'test_mini_app_enable_main_botfather_once.py' -v
       - name: Verify privacy-safe v0.5 direct API attribution in pilot reports
         run: python -m unittest discover -s tests -p 'test_mini_app_pilot_report.py' -v
+      - name: Test one-shot channel pilot CTA correction without Telegram writes
+        run: |
+          python -m py_compile scripts/mini_app_channel_direct_pilot_v05.py
+          python -m unittest discover -s tests -p 'test_mini_app_channel_direct_pilot_v05.py' -v
       - name: Publish preview files as CI artifact, not a public deployment
         uses: actions/upload-artifact@v4
         with:
