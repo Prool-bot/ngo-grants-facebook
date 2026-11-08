@@ -1,0 +1,9 @@
+{
+  "status": "attempted",
+  "operation": "editMessageText",
+  "target": "https://t.me/ngo_grants/3815",
+  "message_id": 3815,
+  "direct_link": "https://t.me/ngogratsAI_bot?startapp=ngo_grants",
+  "started_at": "2026-11-08T11:45:53.350512+00:00",
+  "run_id": "42477150672"
+}
