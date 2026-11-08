@@ -2,7 +2,38 @@
   "post_url": "https://t.me/ngo_grants/3818",
   "poll_id": 3818,
   "anonymous": true,
-  "total_voters": 2,
-  "options": null,
-  "breakdown_available": false
+  "total_voters": 9,
+  "options": [
+    {
+      "index": 1,
+      "label": "✅ Анкета працює, проблем немає",
+      "votes": 2
+    },
+    {
+      "index": 2,
+      "label": "📄 Замовив(-ла), отримав(-ла) каталог",
+      "votes": 2
+    },
+    {
+      "index": 3,
+      "label": "⏳ Замовив(-ла), очікую результат",
+      "votes": 0
+    },
+    {
+      "index": 4,
+      "label": "⚠️ Була помилка під час оформлення",
+      "votes": 0
+    },
+    {
+      "index": 5,
+      "label": "🔎 Каталог не знайшов відповідних грантів",
+      "votes": 2
+    },
+    {
+      "index": 6,
+      "label": "👀 Лише переглянув(-ла) помічника",
+      "votes": 3
+    }
+  ],
+  "breakdown_available": true
 }
