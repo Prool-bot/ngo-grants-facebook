@@ -1,0 +1,70 @@
+name: NGO Grants Mini App — v0.4 applicant/FOP clarity hotfix
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/mini-app-fop-v04.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ngo-grants-worker-production-deploy
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
+      CF_WORKER_ACCOUNT_ID: ${{ secrets.CF_WORKER_ACCOUNT_ID }}
+      CF_WORKER_API_TOKEN: ${{ secrets.CF_WORKER_API_TOKEN }}
+      NGO_BOT_GATEWAY_URL: ${{ secrets.NGO_BOT_GATEWAY_URL }}
+      NGO_MINI_APP_RELEASE_APPROVED: 'YES_FOP_GUIDANCE_V04_CANARY'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify offline applicant/FOP UX, surgical HTML patch and rollback
+        run: |
+          python -m py_compile worker/patch_live_worker_mini_app_fop_v04.py worker/build_mini_app_fop_v04_candidate.py worker/deploy_worker_mini_app_fop_v04.py
+          python -m unittest discover -s tests -p 'test_mini_app_fop_v04_*.py' -v
+          node --check mini-app/app.js
+          node --test mini-app/tests/*.test.cjs mini-app/tests/*.test.mjs
+      - name: Stage private Worker, verify complete legacy and new routes; canary and rollback
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          workdir="$(mktemp -d "${RUNNER_TEMP}/miniapp-fop-v04.XXXXXX")"
+          trap 'rm -rf "$workdir"' EXIT
+          python worker/build_mini_app_fop_v04_candidate.py "$workdir/miniapp-fop-v04.mjs"
+          node --check "$workdir/miniapp-fop-v04.mjs"
+          node tests/test_worker_menu_v58.mjs "$workdir/miniapp-fop-v04.mjs"
+          node tests/test_mini_app_worker_mock.mjs "$workdir/miniapp-fop-v04.mjs"
+          node tests/test_mini_app_start_direct_worker.mjs "$workdir/miniapp-fop-v04.mjs"
+          node tests/test_mini_app_actual_worker_order_bridge_e2e.mjs "$workdir/miniapp-fop-v04.mjs"
+          python worker/stage_worker_mini_app.py "$workdir/miniapp-fop-v04.mjs"
+          NGO_MINI_APP_V04_VERSION_ID="$(python - <<'PY'
+          import json,os,re
+          from pathlib import Path
+          path=Path(os.environ["RUNNER_TEMP"])/"ngo-worker-miniapp-stage.json"
+          info=json.loads(path.read_text("utf-8"))
+          version=str(info.get("version_id") or "")
+          if (info.get("script")!="ngo-grants-instant-bot" or
+              info.get("staged_only") is not True or
+              re.fullmatch(r"[a-f0-9-]{36}",version) is None):
+              raise SystemExit("Invalid staged Worker version receipt")
+          print(version)
+          PY
+          )"
+          export NGO_MINI_APP_V04_VERSION_ID
+          python worker/deploy_worker_mini_app_fop_v04.py
+          echo 'MINI_APP_FOP_V04_PRODUCTION_RELEASE_OK'
