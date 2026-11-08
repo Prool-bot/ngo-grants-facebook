@@ -32,10 +32,11 @@ jobs:
         with: {node-version: '22'}
       - name: Verify schema patch and SQL-only gate using synthetic Worker
         run: |
-          python -m py_compile worker/patch_staged_readonly_schema_route.py worker/build_staged_d1_schema_candidate.py scripts/mini_app_staged_d1_schema_check.py
+          python -m py_compile worker/patch_staged_readonly_schema_route.py worker/build_staged_d1_schema_candidate.py scripts/mini_app_staged_d1_schema_check.py worker/staged_schema_canary_with_rollback.py
           python -m unittest discover -s tests -p 'test_mini_app_staged_schema_patch.py' -v
+          python -m unittest discover -s tests -p 'test_mini_app_schema_canary_rollback.py' -v
           node --check tests/test_mini_app_staged_schema_route.mjs
-      - name: Stage dormant read-only schema Worker and inspect, no production traffic
+      - name: Stage dormant Worker; temporary 0.01% canary to inspect metadata; always restore 100% original
         shell: bash
         run: |
           set -euo pipefail
@@ -48,5 +49,5 @@ jobs:
           node tests/test_worker_menu_v58.mjs "$scratch/staged-private.mjs"
           node tests/test_mini_app_staged_schema_route.mjs "$scratch/staged-private.mjs"
           python worker/stage_worker_mini_app.py "$scratch/staged-private.mjs"
-          python scripts/mini_app_staged_d1_schema_check.py
-          echo 'NO_PRODUCTION_DEPLOYMENT_NO_D1_WRITES_NO_REAL_CATALOG_ORDERS'
+          python worker/staged_schema_canary_with_rollback.py
+          echo 'PRODUCTION_V04_RESTORED_NO_D1_WRITES_NO_REAL_CATALOG_ORDERS'
