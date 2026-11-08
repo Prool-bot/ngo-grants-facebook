@@ -79,8 +79,8 @@ async def wait_url_prompt(client,father,start_id):
             if getattr(msg,"out",False) or (msg.id or 0)<=start_id:
                 continue
             text=str(getattr(msg,"raw_text","") or "")
-            if (re.search(r"\\b(?:URL|link|website)\\b",text,re.I) and
-                re.search(r"\\b(?:send|provide|enter|specify|paste|please)\\b",text,re.I)):
+            if (re.search(r"\b(?:URL|link|website)\b",text,re.I) and
+                re.search(r"\b(?:send|provide|enter|specify|paste|please)\b",text,re.I)):
                 return True
     raise RuntimeError("BotFather did not explicitly request a Mini App URL")
 
