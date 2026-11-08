@@ -1,0 +1,42 @@
+name: NGO Grants Mini App — read-only current D1 table metadata
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/mini-app-d1-metadata-audit.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ngo-grants-worker-production-deploy
+  cancel-in-progress: false
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
+      CF_WORKER_ACCOUNT_ID: ${{ secrets.CF_WORKER_ACCOUNT_ID }}
+      CF_WORKER_API_TOKEN: ${{ secrets.CF_WORKER_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - name: Test sanitized schema inspector
+        run: |
+          python -m py_compile scripts/mini_app_d1_schema_sanitized.py
+          python -m unittest discover -s tests -p 'test_mini_app_d1_schema_sanitized.py' -v
+      - name: Inspect only schema metadata from the approved private v0.4 Worker
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          scratch="$(mktemp -d "${RUNNER_TEMP}/miniapp-schema.XXXXXX")"
+          trap 'rm -rf "$scratch"' EXIT
+          python worker/read_live_mini_app_v04_contract.py "$scratch/worker.mjs"
+          python scripts/mini_app_d1_schema_sanitized.py "$scratch/worker.mjs"
+          echo 'READ_ONLY_D1_SCHEMA_INSPECTION_COMPLETE'
