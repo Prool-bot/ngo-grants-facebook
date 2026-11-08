@@ -1,0 +1,36 @@
+name: NGO Grants Mini App v0.5 — disabled Cloudflare canary + rollback
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/mini-app-direct-v05-verify.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ngo-grants-worker-production-deploy
+  cancel-in-progress: false
+
+jobs:
+  readonly_canary:
+    runs-on: ubuntu-latest
+    timeout-minutes: 7
+    env:
+      CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
+      CF_WORKER_ACCOUNT_ID: ${{ secrets.CF_WORKER_ACCOUNT_ID }}
+      CF_WORKER_API_TOKEN: ${{ secrets.CF_WORKER_API_TOKEN }}
+      NGO_BOT_GATEWAY_URL: ${{ secrets.NGO_BOT_GATEWAY_URL }}
+      MINI_APP_V05_CANARY_APPROVED: 'YES_DISABLED_001_WITH_ROLLBACK'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - name: Test strict canary rollback and disabled POST
+        run: |
+          python -m py_compile worker/verify_mini_app_direct_v05_canary.py
+          python -m unittest discover -s tests -p 'test_mini_app_direct_v05_canary.py' -v
+      - name: 0.01% staged UI GET and disabled API POST smoke, ALWAYS restore v0.4
+        run: python worker/verify_mini_app_direct_v05_canary.py
