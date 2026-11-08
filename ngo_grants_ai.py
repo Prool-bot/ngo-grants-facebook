@@ -26,6 +26,7 @@ import os
 from pathlib import Path
 import re
 import sys
+import time
 import unicodedata
 import urllib.error
 import urllib.parse
@@ -3934,16 +3935,28 @@ def gateway_api(path: str, data: dict | None = None) -> dict:
         raise RuntimeError("Потрібні NGO_BOT_GATEWAY_URL (https://) і NGO_BOT_SYNC_SECRET")
     if path not in ("/internal/pending", "/internal/sync", "/internal/activate", "/internal/deactivate"):
         raise ValueError("Unsupported gateway route")
+    # Only read-only GET /internal/pending is safe to retry after an uncertain
+    # socket read timeout. Never retry /sync or other writes: that risks
+    # accidentally duplicating a state transition after a partial response.
+    attempts = 3 if path == "/internal/pending" and data is None else 1
     try:
-        # Cloudflare 1010 blocks urllib's default "Python-urllib/..." identity.
-        # A descriptive fixed User-Agent was tested from GitHub Actions (HTTP 200).
-        return http_json(base + path, data=data, headers={
-            "Authorization": "Bearer " + key,
-            "User-Agent": "NGO-Grants-Healthcheck/1.0",
-            "Accept": "application/json",
-        }, timeout=30)
+        for attempt in range(attempts):
+            try:
+                # Cloudflare blocks urllib's default Python-urllib User-Agent.
+                return http_json(base + path, data=data, headers={
+                    "Authorization": "Bearer " + key,
+                    "User-Agent": "NGO-Grants-Healthcheck/1.0",
+                    "Accept": "application/json",
+                }, timeout=30)
+            except TimeoutError:
+                if attempt >= attempts - 1:
+                    raise RuntimeError("Cloudflare read timeout after bounded retry") from None
+                # Deterministic and bounded; no credentials, URL or response
+                # bodies are printed. All attempts are idempotent GET reads.
+                time.sleep(attempt + 1)
+        raise RuntimeError("Cloudflare read attempts exhausted")
     except RuntimeError as exc:
-        # Deliberately don't output gateway URL or bearer token.
+        # Deliberately don't output gateway URL, bearer token or user topics.
         raise RuntimeError("Не вдалось обмінятися даними з ботом Cloudflare (" + type(exc).__name__ + ")") from None
 
 
