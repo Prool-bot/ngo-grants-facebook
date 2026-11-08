@@ -63,8 +63,8 @@ async def read_only_verify_existing(expected_legacy:str)->None:
         if not await client.is_user_authorized():
             raise RuntimeError("Telegram read-only session not authenticated")
         msg=await client.get_messages("ngo_grants",ids=MESSAGE_ID)
-        if not msg or msg.id!=MESSAGE_ID or
-           (msg.raw_text or "").strip()!=visible_text(expected_legacy):
+        if (not msg or msg.id!=MESSAGE_ID or
+                (msg.raw_text or "").strip()!=visible_text(expected_legacy)):
             raise RuntimeError("Real Telegram post does not match expected original text")
     print("OLD_PUBLIC_RESULT_3815_TEMPLATE_VERIFIED=True")
 
