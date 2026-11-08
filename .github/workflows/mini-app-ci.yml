@@ -4,6 +4,9 @@ on:
   pull_request:
     paths:
       - "mini-app/**"
+      - "scripts/mini_app_enable_main_botfather_once.py"
+      - "tests/test_mini_app_enable_main_botfather_once.py"
+      - ".github/workflows/mini-app-enable-main-botfather.yml"
       - "scripts/mini_app_v05_health_readonly.py"
       - "scripts/mini_app_main_owner_readonly.py"
       - "tests/test_mini_app_v05_health_readonly.py"
@@ -89,6 +92,10 @@ jobs:
           python -m py_compile scripts/mini_app_v05_health_readonly.py scripts/mini_app_main_owner_readonly.py
           python -m unittest discover -s tests -p 'test_mini_app_v05_health_readonly.py' -v
           python -m unittest discover -s tests -p 'test_mini_app_main_owner_readonly.py' -v
+      - name: Verify BotFather Main Mini App one-shot controls without Telegram writes
+        run: |
+          python -m py_compile scripts/mini_app_enable_main_botfather_once.py
+          python -m unittest discover -s tests -p 'test_mini_app_enable_main_botfather_once.py' -v
       - name: Publish preview files as CI artifact, not a public deployment
         uses: actions/upload-artifact@v4
         with:
