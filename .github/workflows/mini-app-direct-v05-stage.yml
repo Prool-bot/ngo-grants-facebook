@@ -6,6 +6,7 @@ on:
     paths:
       - '.github/workflows/mini-app-direct-v05-stage.yml'
       - 'worker/patch_live_worker_mini_app_direct_v05.py'
+      - 'tests/test_mini_app_direct_worker_v05.mjs'
   workflow_dispatch:
 
 permissions:
