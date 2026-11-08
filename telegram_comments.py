@@ -130,7 +130,7 @@ def search_comments(rows, query="", post_id=None, since=None):
     return sorted(result, key=lambda row: (row["date"], row["id"]), reverse=True)
 
 
-async def sync_comments(days=45, full=False):
+async def sync_comments(days=45, full=False, allow_no_discussion=False):
     from telethon import TelegramClient
     from telethon.sessions import StringSession
     from telethon.tl.functions.channels import GetFullChannelRequest
@@ -162,7 +162,22 @@ async def sync_comments(days=45, full=False):
         info = await client(GetFullChannelRequest(channel))
         group_id = getattr(info.full_chat, "linked_chat_id", None)
         group = next((chat for chat in info.chats if chat.id == group_id), None)
-        if not group_id or not isinstance(group, Channel) or not group.megagroup:
+        if not group_id:
+            if allow_no_discussion:
+                print("PUBLIC_COMMENTS_UNAVAILABLE=NO_LINKED_DISCUSSION; no comment-count claims",flush=True)
+                return
+            raise RuntimeError("No linked discussion megagroup")
+        if not isinstance(group, Channel):
+            try:
+                # Telegram sometimes omits linked chat from GetFullChannelRequest.chats.
+                # Resolve the known linked chat through the same authorized session.
+                group = await client.get_entity(group_id)
+            except Exception:
+                group = None
+        if not isinstance(group, Channel) or not group.megagroup:
+            if allow_no_discussion:
+                print("PUBLIC_COMMENTS_UNAVAILABLE=LINKED_GROUP_NOT_ACCESSIBLE; no comment-count claims",flush=True)
+                return
             raise RuntimeError("No linked discussion megagroup")
         print("Перевірка: групу обговорень знайдено.", flush=True)
         discussion_username = getattr(group, "username", None)
@@ -208,6 +223,8 @@ def main():
     sync = sub.add_parser("sync")
     sync.add_argument("--days", type=int, default=45)
     sync.add_argument("--full", action="store_true")
+    sync.add_argument("--allow-no-discussion", action="store_true",
+                      help="Pilot monitoring: report absence of accessible linked public discussion without failing catalog QA")
     search = sub.add_parser("search")
     search.add_argument("query", nargs="?", default="")
     search.add_argument("--post-id", type=int)
@@ -218,7 +235,7 @@ def main():
     if args.cmd == "sync":
         if not 1 <= args.days <= 3650:
             parser.error("Invalid days")
-        asyncio.run(sync_comments(args.days, args.full))
+        asyncio.run(sync_comments(args.days, args.full, args.allow_no_discussion))
     else:
         if args.limit < 1 or (args.post_id is not None and args.post_id < 1):
             parser.error("Invalid limit or post ID")
