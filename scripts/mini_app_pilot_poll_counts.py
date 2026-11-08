@@ -58,8 +58,31 @@ def summarize(media)->dict:
     }
 
 
+def refreshed_poll_media(media, updates):
+    """Use only aggregate UpdateMessagePoll counters from explicit read-only RPC.
+
+    Telegram may attach a partial (min) poll-results object to channel
+    messages, showing total voters but hiding all option counts.
+    """
+    from types import SimpleNamespace
+    poll=getattr(media,"poll",None)
+    if poll is None:return media
+    current=getattr(media,"results",None)
+    current_count=len(getattr(current,"results",[]) or [])
+    wanted=getattr(poll,"id",None)
+    if wanted is None:return media
+    for update in getattr(updates,"updates",[]) or []:
+        if getattr(update,"poll_id",None)!=wanted:continue
+        fresh=getattr(update,"results",None)
+        if fresh is None:continue
+        if len(getattr(fresh,"results",[]) or [])>current_count:
+            return SimpleNamespace(poll=poll,results=fresh)
+    return media
+
+
 async def main():
     from telethon import TelegramClient
+    from telethon.tl.functions.messages import GetPollResultsRequest
     from telethon.sessions import StringSession
     required=("TELEGRAM_API_ID","TELEGRAM_API_HASH","TELEGRAM_SESSION")
     for key in required:
@@ -79,7 +102,25 @@ async def main():
         message=await client.get_messages(CHANNEL,ids=POLL_ID)
         if not message or message.id!=POLL_ID:
             raise RuntimeError("Cannot verify official poll message")
-        out=summarize(getattr(message,"media",None))
+        media=getattr(message,"media",None)
+        poll=getattr(media,"poll",None)
+        if poll is None or getattr(poll,"public_voters",False):
+            raise RuntimeError("Unexpected poll type")
+        # This returns aggregate results only; never request voter identities.
+        # poll_hash=0 requests a fresh state rather than a cached no-change result.
+        try:
+            updates=await client(GetPollResultsRequest(
+                peer=await client.get_input_entity(CHANNEL),
+                msg_id=POLL_ID,poll_hash=0
+            ))
+        except TypeError:
+            # Older Telethon layers omit poll_hash.
+            updates=await client(GetPollResultsRequest(
+                peer=await client.get_input_entity(CHANNEL),
+                msg_id=POLL_ID
+            ))
+        media=refreshed_poll_media(media,updates)
+        out=summarize(media)
     OUTPUT.parent.mkdir(parents=True,exist_ok=True)
     existing=json.loads(OUTPUT.read_text("utf8")) if OUTPUT.exists() else None
     if out!=existing:

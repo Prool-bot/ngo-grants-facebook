@@ -28,6 +28,24 @@ class PollCountsTests(TestCase):
     self.assertEqual(result["total_voters"],9)
     self.assertIsNone(result["options"])
     self.assertFalse(result["breakdown_available"])
+ def test_explicit_aggregate_poll_results_refreshes_partial_message(self):
+    poll=Obj(id=778899,public_voters=False,
+      answers=[Obj(text="Все працює",option=b"a"),
+               Obj(text="Не працює",option=b"b")])
+    old=Obj(poll=poll,results=Obj(results=[],total_voters=2))
+    fresh=Obj(updates=[Obj(poll_id=778899,
+       results=Obj(results=[Obj(option=b"a",voters=1),
+                            Obj(option=b"b",voters=1)],
+                   total_voters=2))])
+    combined=mod.refreshed_poll_media(old,fresh)
+    summary=mod.summarize(combined)
+    self.assertTrue(summary["breakdown_available"])
+    self.assertEqual([x["votes"] for x in summary["options"]],[1,1])
+ def test_unrelated_update_cannot_override_poll_counters(self):
+    original=Obj(poll=Obj(id=99),results=Obj(results=[],total_voters=2))
+    unrelated=Obj(updates=[Obj(poll_id=100,
+      results=Obj(results=[Obj(option=b"a",voters=999)],total_voters=999))])
+    self.assertIs(mod.refreshed_poll_media(original,unrelated),original)
  def test_reject_nonanonymous_poll_and_invalid_data(self):
     media=Obj(poll=Obj(public_voters=True,answers=[Obj(text="Працює",option=b"a")]),
               results=Obj(results=[],total_voters=0))
