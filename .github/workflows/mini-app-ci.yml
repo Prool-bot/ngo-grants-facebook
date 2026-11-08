@@ -5,6 +5,9 @@ on:
     paths:
       - "mini-app/**"
       - "worker/mini_app_live_d1_adapter.mjs"
+      - "worker/release_mini_app_direct_v05_active.py"
+      - "tests/test_mini_app_direct_v05_release.py"
+      - ".github/workflows/mini-app-direct-v05-release.yml"
       - "worker/patch_live_worker_mini_app_direct_v05.py"
       - "worker/build_mini_app_direct_v05_candidate.py"
       - "tests/test_mini_app_direct_v05_patch.py"
@@ -72,6 +75,10 @@ jobs:
           node --check tests/test_mini_app_direct_worker_v05.mjs
           python -m py_compile worker/patch_live_worker_mini_app_direct_v05.py worker/build_mini_app_direct_v05_candidate.py
           python -m unittest discover -s tests -p 'test_mini_app_direct_v05_patch.py' -v
+      - name: Validate signed v0.5 release canary and automatic rollback OFFLINE
+        run: |
+          python -m py_compile worker/release_mini_app_direct_v05_active.py
+          python -m unittest discover -s tests -p 'test_mini_app_direct_v05_release.py' -v
       - name: Publish preview files as CI artifact, not a public deployment
         uses: actions/upload-artifact@v4
         with:
