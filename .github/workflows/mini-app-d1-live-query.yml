@@ -1,0 +1,30 @@
+name: NGO Grants Mini App — read-only real D1 table schema
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/mini-app-d1-live-query.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
+      CF_WORKER_ACCOUNT_ID: ${{ secrets.CF_WORKER_ACCOUNT_ID }}
+      CF_WORKER_API_TOKEN: ${{ secrets.CF_WORKER_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - name: Enforce strict read-only SQL allowlist
+        run: |
+          python -m py_compile scripts/mini_app_d1_live_schema_readonly.py
+          python -m unittest discover -s tests -p 'test_mini_app_d1_live_schema_readonly.py' -v
+      - name: Retrieve approved D1 column and index metadata, never row data
+        run: python scripts/mini_app_d1_live_schema_readonly.py
