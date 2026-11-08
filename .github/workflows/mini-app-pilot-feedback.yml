@@ -31,6 +31,7 @@ jobs:
         run: |
           python -m unittest discover -s tests -p 'test_mini_app_pilot_report.py' -v
           python -m unittest discover -s tests -p 'test_telegram_comments.py' -v
+          python -m unittest discover -s tests -p 'test_mini_app_pilot_poll_counts.py' -v
       - name: Install Telegram public-comments reader
         run: python -m pip install telethon==1.45.0
       - name: Read recent public channel replies (no private chats, no sending)
@@ -39,13 +40,19 @@ jobs:
           TELEGRAM_API_HASH: ${{ secrets.TELEGRAM_API_HASH }}
           TELEGRAM_SESSION: ${{ secrets.TELEGRAM_SESSION }}
         run: python -u telegram_comments.py sync --days 7 --allow-no-discussion
-      - name: Commit only redacted public comments
+      - name: Read only anonymous votes in feedback poll (no respondent identities)
+        env:
+          TELEGRAM_API_ID: ${{ secrets.TELEGRAM_API_ID }}
+          TELEGRAM_API_HASH: ${{ secrets.TELEGRAM_API_HASH }}
+          TELEGRAM_SESSION: ${{ secrets.TELEGRAM_SESSION }}
+        run: python scripts/mini_app_pilot_poll_counts.py
+      - name: Commit only anonymized public feedback and aggregate poll counts
         shell: bash
         run: |
           set -euo pipefail
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add -- archive/telegram/comments/
+          git add -- archive/telegram/comments/ reports/mini_app_pilot_poll_3818.json
           if ! git diff --cached --quiet; then
             git commit -m 'Refresh anonymized public pilot feedback'
             for attempt in 1 2 3; do
