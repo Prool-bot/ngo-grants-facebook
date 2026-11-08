@@ -38,7 +38,8 @@ def summarize(media)->dict:
     options=[]
     for i,item in enumerate(answers):
         key=getattr(item,"option",None)
-        text=getattr(item,"text",None)
+        raw_text=getattr(item,"text",None)
+        text=raw_text if isinstance(raw_text,str) else getattr(raw_text,"text",None)
         if not isinstance(key,bytes) or not isinstance(text,str):
             raise RuntimeError("Unexpected option type")
         options.append({"index":i+1,"label":text,"votes":counts.get(key,0)})
