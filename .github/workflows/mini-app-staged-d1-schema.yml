@@ -1,0 +1,52 @@
+name: NGO Grants Mini App — safe dormant Worker D1 schema probe
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/mini-app-staged-d1-schema.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ngo-grants-worker-production-deploy
+  cancel-in-progress: false
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
+      CF_WORKER_ACCOUNT_ID: ${{ secrets.CF_WORKER_ACCOUNT_ID }}
+      CF_WORKER_API_TOKEN: ${{ secrets.CF_WORKER_API_TOKEN }}
+      NGO_BOT_GATEWAY_URL: ${{ secrets.NGO_BOT_GATEWAY_URL }}
+      NGO_BOT_SYNC_SECRET: ${{ secrets.NGO_BOT_SYNC_SECRET }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Verify schema patch and SQL-only gate using synthetic Worker
+        run: |
+          python -m py_compile worker/patch_staged_readonly_schema_route.py worker/build_staged_d1_schema_candidate.py scripts/mini_app_staged_d1_schema_check.py
+          python -m unittest discover -s tests -p 'test_mini_app_staged_schema_patch.py' -v
+          node --check tests/test_mini_app_staged_schema_route.mjs
+      - name: Stage dormant read-only schema Worker and inspect, no production traffic
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          scratch="$(mktemp -d "${RUNNER_TEMP}/miniapp-staged-schema.XXXXXX")"
+          trap 'rm -rf "$scratch"' EXIT
+          python worker/read_live_mini_app_v04_contract.py "$scratch/original-private.mjs"
+          python worker/build_staged_d1_schema_candidate.py "$scratch/original-private.mjs" "$scratch/staged-private.mjs"
+          node --check "$scratch/staged-private.mjs"
+          node tests/test_worker_menu_v58.mjs "$scratch/staged-private.mjs"
+          node tests/test_mini_app_staged_schema_route.mjs "$scratch/staged-private.mjs"
+          python worker/stage_worker_mini_app.py "$scratch/staged-private.mjs"
+          python scripts/mini_app_staged_d1_schema_check.py
+          echo 'NO_PRODUCTION_DEPLOYMENT_NO_D1_WRITES_NO_REAL_CATALOG_ORDERS'
