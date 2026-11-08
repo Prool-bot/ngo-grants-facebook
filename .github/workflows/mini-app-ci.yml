@@ -4,6 +4,12 @@ on:
   pull_request:
     paths:
       - "mini-app/**"
+      - "worker/mini_app_live_d1_adapter.mjs"
+      - "worker/patch_live_worker_mini_app_direct_v05.py"
+      - "worker/build_mini_app_direct_v05_candidate.py"
+      - "tests/test_mini_app_direct_v05_patch.py"
+      - "tests/test_mini_app_direct_worker_v05.mjs"
+      - ".github/workflows/mini-app-direct-v05-stage.yml"
       - "worker/mini_app_verify_init_data.mjs"
       - "worker/mini_app_order_endpoint.mjs"
       - "worker/mini_app_keyboard_bridge.mjs"
@@ -60,6 +66,12 @@ jobs:
           python -m unittest discover -s tests -p 'test_mini_app_start_v03_*.py' -v
           python -m unittest discover -s tests -p 'test_mini_app_fop_v04_*.py' -v
           node --check tests/test_mini_app_start_direct_worker.mjs
+      - name: Check direct-link v0.5 Worker patch and durable receipt adapter
+        run: |
+          node --check worker/mini_app_live_d1_adapter.mjs
+          node --check tests/test_mini_app_direct_worker_v05.mjs
+          python -m py_compile worker/patch_live_worker_mini_app_direct_v05.py worker/build_mini_app_direct_v05_candidate.py
+          python -m unittest discover -s tests -p 'test_mini_app_direct_v05_patch.py' -v
       - name: Publish preview files as CI artifact, not a public deployment
         uses: actions/upload-artifact@v4
         with:
