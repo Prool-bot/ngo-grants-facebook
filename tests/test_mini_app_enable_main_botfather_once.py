@@ -17,7 +17,7 @@ class Tests(TestCase):
     self.assertEqual(mod.URL,
       "https://ngo-grants-instant-bot.oleh-protasoff.workers.dev/mini-app/direct")
     with patch.dict(os.environ,{},clear=True):
-      with self.assertRaisesRegex(RuntimeError,"release gate missing"):
+      with self.assertRaisesRegex(RuntimeError,"setup gate missing"):
         mod.confirm_environment()
  def test_existing_lock_blocks_duplicate_configuration(self):
     with patch.object(mod,"github_api",return_value=(200,{"sha":"already"})) as github:
