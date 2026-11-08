@@ -1,0 +1,11 @@
+{
+  "status": "attempted",
+  "operation": "editMessageText",
+  "channel": "@ngo_grants",
+  "message_id": 3813,
+  "target": "https://t.me/ngo_grants/3813",
+  "button_url": "https://t.me/ngogratsAI_bot?startapp=ngo_grants",
+  "fallback_url": "https://t.me/ngogratsAI_bot",
+  "created_at": "2026-11-08T11:27:05.665942+00:00",
+  "run_id": "42475787601"
+}
