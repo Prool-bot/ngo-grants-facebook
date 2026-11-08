@@ -1598,7 +1598,8 @@
             null
           ]
         }
-      }
+      },
+      "navigation_status": "linked"
     }
   }
 }
