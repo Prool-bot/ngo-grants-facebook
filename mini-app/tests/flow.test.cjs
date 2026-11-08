@@ -5,6 +5,7 @@ const vm=require('node:vm');
 const fs=require('node:fs');
 const path=require('node:path');
 const schema=require('../schema.js');
+const directClient=require('../direct-client.js');
 
 class FakeElement {
  constructor(tag='div'){
@@ -17,10 +18,10 @@ class FakeElement {
  replaceChildren(...nodes){this.children=[...nodes];}
  addEventListener(type,fn){this.listeners[type]=fn;}
  setAttribute(name,value){this[name]=value;}
- click(){const fn=this.listeners.click;if(fn)fn({preventDefault(){}});}
+ click(){const fn=this.listeners.click;if(fn)return fn({preventDefault(){}});}
  requestSubmit(){const fn=this.listeners.submit;if(fn)fn({preventDefault(){}});}
 }
-function start(nativeSend=false){
+function start(nativeSend=false,directSend=false,post=async()=>{throw Error('mock post not configured');}){
  const nodes={};
  const ids=[
   'miniApp','choices','extra','extraInput','robot','question','hint','stepLabel',
@@ -29,11 +30,18 @@ function start(nativeSend=false){
  ];
  for(const id of ids)nodes[id]=new FakeElement(id);
  nodes.miniApp.dataset.nativeSend=nativeSend?'true':'false';
+ nodes.miniApp.dataset.directSend=directSend?'true':'false';
  nodes.miniApp.dataset.initialized='';
  nodes.progress.setAttribute=()=>{};
  const doc={getElementById:id=>nodes[id],createElement:tag=>new FakeElement(tag)};
  const wnd={NgoGrantsSchema:schema,matchMedia:()=>({matches:true})};
- if(nativeSend)wnd.Telegram={WebApp:{ready(){},expand(){},sendData(){throw Error('Never send in test');}}};
+ if(nativeSend||directSend)wnd.Telegram={WebApp:{ready(){},expand(){},initData:directSend?'SIGNED_FAKE_TELEGRAM_TEST_DATA':'',sendData(){throw Error('Never send in test');}}};
+ if(directSend){
+  wnd.NgoGrantsDirectClient=directClient;
+  wnd.crypto={randomUUID:()=> '123e4567-e89b-42d3-a456-426614174000'};
+  wnd.location={origin:'https://example.workers.dev'};
+  wnd.fetch=post;
+ }
  const app=fs.readFileSync(path.join(__dirname,'../app.js'),'utf8');
  vm.runInNewContext(app,{window:wnd,document:doc,TextEncoder,setTimeout,clearTimeout});
  function option(label){
@@ -113,4 +121,41 @@ test('individual interested in business is warned about FOP eligibility without 
  change.click();
  assert.match(nodes.question.textContent,/Хто подаватиме/);
  assert.equal(nodes.choices.children[1]['aria-pressed'],'true','Registered FOP/Business should be selected explicitly');
+});
+
+test('direct-link UI waits for durable server receipt and never calls Telegram sendData',async()=>{
+ const posts=[];
+ const app=start(false,true,async(url,options)=>{
+  posts.push({url,options});
+  return {status:201,json:async()=>({ok:true,order_id:423,status:'created'})};
+ });
+ reachRole(app);
+ app.next(); // funding
+ app.next(); // summary
+ assert.equal(app.nodes.stepLabel.textContent,'Підсумок');
+ assert.equal(app.nodes.mode.textContent,'Telegram · пошук із каналу');
+ const send=app.nodes.summary.children.find(x=>x.textContent==='✅ Замовити каталог');
+ assert.ok(send,'Direct mode must show one explicit submit button');
+ await send.click();
+ assert.equal(posts.length,1);
+ assert.equal(posts[0].url,'https://example.workers.dev/api/mini-app/order');
+ const payload=JSON.parse(posts[0].options.body);
+ assert.deepEqual(Object.keys(payload).sort(),['facets','idempotencyKey','initData']);
+ assert.equal(send.disabled,true);
+ assert.equal(send.textContent,'Замовлення підтверджено');
+ assert.ok(app.nodes.summary.children.some(x=>/№423/.test(x.textContent)));
+});
+test('direct-link UI refuses unconfirmed queue commit and keeps retry enabled',async()=>{
+ let count=0;
+ const app=start(false,true,async()=>{
+   count++;return {status:503,json:async()=>({ok:false,error:'Private detail'})};
+ });
+ reachRole(app);app.next();app.next();
+ const send=app.nodes.summary.children.find(x=>x.textContent==='✅ Замовити каталог');
+ await send.click();
+ assert.equal(count,1);
+ assert.equal(send.disabled,false);
+ assert.equal(send.textContent,'↻ Повторити підтвердження');
+ assert.match(app.nodes.error.textContent,/тимчасово недоступний/);
+ assert.doesNotMatch(app.nodes.summary.children.map(x=>x.textContent).join(' '),/№\\d+/);
 });
