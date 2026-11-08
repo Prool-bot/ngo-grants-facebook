@@ -23,7 +23,7 @@ SCHEMA_MARKER="NGO_MINI_APP_STAGE_SCHEMA_READ_ONLY_V01"
 DIRECT_MARKER="NGO_MINI_APP_DIRECT_API_DORMANT_V05"
 TELL_ANCHOR="async function tell(env,chatId,text,markup=null,editId=null){"
 FETCH_ANCHOR="export default {async fetch(request,env){"
-FETCH_PATTERN=r"\\bexport\\s+default\\s*\\{\\s*async\\s+fetch\\s*\\(\\s*request\\s*,\\s*env\\s*\\)\\s*\\{"
+FETCH_PATTERN=r"\bexport\s+default\s*\{\s*async\s+fetch\s*\(\s*request\s*,\s*env\s*\)\s*\{"
 DISABLED_FLAG="const __ngoMiniAppDirectRouteEnabled=false;"
 
 def once(src,old,new,description):
@@ -43,13 +43,14 @@ def reconstruct_base(source:str)->str:
     original=once(source,"\n"+ROUTE_BODY,"","exact stage-only D1 schema splice")
     fetch_count=len(list(re.finditer(FETCH_PATTERN,original)))
     tell_count=original.count(TELL_ANCHOR)
+    menu_ok="menu_version:'5.8'" in original
     if (SCHEMA_MARKER in original or
         "menu_version:'5.8'" not in original or
         tell_count!=1 or fetch_count!=1):
         raise RuntimeError("Original Worker reconstruction fingerprint mismatch "
             f"(stage_present={SCHEMA_MARKER in original};"
             f"tell_count={tell_count};fetch_count={fetch_count};"
-            f"menu_ok={\"menu_version:'5.8'\" in original})")
+            f"menu_ok={menu_ok})")
     return original
 
 def module_body(path:Path)->str:
