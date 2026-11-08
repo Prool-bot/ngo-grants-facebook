@@ -112,8 +112,14 @@ test("DM failure after D1 transaction still yields real durable receipt",async()
   assert.equal(result.status,"created");
   assert.ok(result.orderId>0);
 });
-test("Never invent a receipt if D1 transaction was not committed",async()=>{
+test("Pre-commit D1 failure is NOT misrepresented as a quota refusal",async()=>{
   const x=setup({commit:false,dmFailure:true});
+  await assert.rejects(x.enqueueExistingOrder(input()),
+    e=>e instanceof DirectOrderRefusal&&e.code==="UPSTREAM_UNAVAILABLE");
+  assert.equal(x.DB.rows.size,0);
+});
+test("Existing Worker quota denial without an insert returns daily-limit response",async()=>{
+  const x=setup({commit:false,dmFailure:false});
   await assert.rejects(x.enqueueExistingOrder(input()),
     e=>e instanceof DirectOrderRefusal&&e.code==="DAILY_LIMIT");
   assert.equal(x.DB.rows.size,0);
