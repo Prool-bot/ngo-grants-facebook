@@ -1,0 +1,39 @@
+name: NGO Grants — switch existing pilot post 3813 to Main Mini App deep link
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/mini-app-channel-direct-pilot-v05.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ngo-grants-main-mini-app-channel-pilot
+  cancel-in-progress: false
+
+jobs:
+  pilot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
+      CF_WORKER_ACCOUNT_ID: ${{ secrets.CF_WORKER_ACCOUNT_ID }}
+      CF_WORKER_API_TOKEN: ${{ secrets.CF_WORKER_API_TOKEN }}
+      NGO_BOT_GATEWAY_URL: ${{ secrets.NGO_BOT_GATEWAY_URL }}
+      NGO_GRANTS_AI_BOT_TOKEN: ${{ secrets.NGO_GRANTS_AI_BOT_TOKEN }}
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      NGO_MINI_APP_CHANNEL_PILOT_APPROVED: 'YES_EDIT_EXISTING_PILOT_POST_3813_ONLY'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - name: Validate post-copy and fail-closed edit guards OFFLINE
+        run: |
+          python -m py_compile scripts/mini_app_channel_direct_pilot_v05.py
+          python -m unittest discover -s tests -p 'test_mini_app_channel_direct_pilot_v05.py' -v
+      - name: Confirm real v0.5 Worker and Main Mini App (read-only)
+        run: python scripts/mini_app_v05_health_readonly.py
+      - name: Replace ONLY the existing pilot announcement button; keep fallback
+        run: python scripts/mini_app_channel_direct_pilot_v05.py
