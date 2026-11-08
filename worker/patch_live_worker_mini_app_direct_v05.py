@@ -23,6 +23,7 @@ SCHEMA_MARKER="NGO_MINI_APP_STAGE_SCHEMA_READ_ONLY_V01"
 DIRECT_MARKER="NGO_MINI_APP_DIRECT_API_DORMANT_V05"
 TELL_ANCHOR="async function tell(env,chatId,text,markup=null,editId=null){"
 FETCH_ANCHOR="export default {async fetch(request,env){"
+FETCH_PATTERN=r"\bexport\s+default\s*\{\s*async\s+fetch\s*\(\s*request\s*,\s*env\s*\)\s*\{"
 DISABLED_FLAG="const __ngoMiniAppDirectRouteEnabled=false;"
 
 def once(src,old,new,description):
@@ -40,11 +41,16 @@ def reconstruct_base(source:str)->str:
             raise RuntimeError("Known deployed v0.4 Worker fingerprint changed")
     # The earlier stage-only candidate was built using this exact splice.
     original=once(source,"\n"+ROUTE_BODY,"","exact stage-only D1 schema splice")
+    fetch_count=len(list(re.finditer(FETCH_PATTERN,original)))
+    tell_count=original.count(TELL_ANCHOR)
+    menu_ok="menu_version:'5.8'" in original
     if (SCHEMA_MARKER in original or
         "menu_version:'5.8'" not in original or
-        original.count(TELL_ANCHOR)!=1 or
-        original.count(FETCH_ANCHOR)!=1):
-        raise RuntimeError("Original Worker could not be reconstructed exactly")
+        tell_count!=1 or fetch_count!=1):
+        raise RuntimeError("Original Worker reconstruction fingerprint mismatch "
+            f"(stage_present={SCHEMA_MARKER in original};"
+            f"tell_count={tell_count};fetch_count={fetch_count};"
+            f"menu_ok={menu_ok})")
     return original
 
 def module_body(path:Path)->str:
@@ -85,7 +91,7 @@ def direct_html(path:Path)->str:
 
 def patch(base:str,root:Path)->str:
     if (DIRECT_MARKER in base or SCHEMA_MARKER in base or
-        base.count(FETCH_ANCHOR)!=1 or
+        len(list(re.finditer(FETCH_PATTERN,base)))!=1 or
         base.count(TELL_ANCHOR)!=1 or
         any(base.count(m)!=1 for m in BASE_MARKERS)):
         raise RuntimeError("Unexpected live v0.4 Worker baseline")
@@ -94,7 +100,9 @@ def patch(base:str,root:Path)->str:
     preamble=("\n// "+DIRECT_MARKER+"\n"+DISABLED_FLAG+"\n"+
               "const __ngoMiniAppDirectHTML="+json.dumps(html,ensure_ascii=True)+";\n"+
               content)
-    base=once(base,FETCH_ANCHOR,preamble+FETCH_ANCHOR,"fetch main")
+    fetch_match=re.search(FETCH_PATTERN,base)
+    if fetch_match is None:raise RuntimeError("Missing single Worker fetch handler")
+    base=base[:fetch_match.start()]+preamble+base[fetch_match.start():]
     base=once(base,TELL_ANCHOR,TELL_ANCHOR+"""
   // Only a server-verified direct Mini App request may set this private
   // per-request flag. Never allow a failed bot DM to hide a D1 commit.
@@ -129,7 +137,9 @@ def patch(base:str,root:Path)->str:
     });
   }
 """
-    base=once(base,FETCH_ANCHOR,FETCH_ANCHOR+route,"HTTP endpoint")
+    fetch_match=re.search(FETCH_PATTERN,base)
+    if fetch_match is None:raise RuntimeError("Worker fetch route disappeared")
+    base=base[:fetch_match.end()]+route+base[fetch_match.end():]
     if (base.count(DIRECT_MARKER)!=1 or base.count(DISABLED_FLAG)!=1 or
         base.count('if(__directPath==="/api/mini-app/order"){')!=1 or
         base.count("if(env&&env.__miniAppHttpOrderMode===true)")!=1):
