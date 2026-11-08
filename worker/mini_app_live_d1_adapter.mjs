@@ -140,14 +140,20 @@ export function createExistingQueueAdapter({
     if(!validatedDraft(draft))fail("CONFIG");
     // A per-request derived env is local; never mutate the global binding.
     const directEnv={...env,__miniAppHttpOrderMode:true};
+    let legacyError=false;
     try{
       await createRequest(directEnv,userId,userId,draft,updateId);
     }catch(_){
-      // A failed Telegram DM or a concurrency race is not proof that the D1
-      // transaction failed. Confirm from durable D1 by deterministic ID.
+      // A throw is not proof of failure: D1 could already have committed.
+      // We verify the durable row before deciding what to return.
+      legacyError=true;
     }
     const saved=await lookupOrder(env.DB,updateId,today);
-    if(!saved)fail("DAILY_LIMIT"); // Includes daily/global limit and conflicts.
+    if(!saved){
+      // Never misreport a database/network exception as a daily quota.
+      if(legacyError)fail("UPSTREAM_UNAVAILABLE");
+      fail("DAILY_LIMIT");
+    }
     return {status:"created",orderId:saved.orderId};
   };
 }
