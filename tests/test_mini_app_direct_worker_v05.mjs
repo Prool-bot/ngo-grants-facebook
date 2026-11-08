@@ -111,7 +111,7 @@ try{
   assert.equal(dbRows.size,0);
   const userInput={initData:sign(),facets,idempotencyKey:uuid};
   const created=await submit(userInput);
-  assert.equal(created.status,201,await created.text());
+  assert.equal(created.status,201);
   const receipt=await created.json();
   assert.equal(receipt.ok,true);
   assert.equal(receipt.status,"created");
