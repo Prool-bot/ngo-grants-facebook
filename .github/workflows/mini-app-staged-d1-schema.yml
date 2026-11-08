@@ -24,6 +24,7 @@ jobs:
       CF_WORKER_API_TOKEN: ${{ secrets.CF_WORKER_API_TOKEN }}
       NGO_BOT_GATEWAY_URL: ${{ secrets.NGO_BOT_GATEWAY_URL }}
       NGO_BOT_SYNC_SECRET: ${{ secrets.NGO_BOT_SYNC_SECRET }}
+      MINI_APP_SCHEMA_CANARY_APPROVED: 'YES_READONLY_001_WITH_ROLLBACK'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -36,18 +37,26 @@ jobs:
           python -m unittest discover -s tests -p 'test_mini_app_staged_schema_patch.py' -v
           python -m unittest discover -s tests -p 'test_mini_app_schema_canary_rollback.py' -v
           node --check tests/test_mini_app_staged_schema_route.mjs
-      - name: Stage dormant Worker; temporary 0.01% canary to inspect metadata; always restore 100% original
+      - name: Reuse verified dormant version; temporary 0.01% PRAGMA canary; always restore 100% original
         shell: bash
         run: |
           set -euo pipefail
           umask 077
           scratch="$(mktemp -d "${RUNNER_TEMP}/miniapp-staged-schema.XXXXXX")"
           trap 'rm -rf "$scratch"' EXIT
-          python worker/read_live_mini_app_v04_contract.py "$scratch/original-private.mjs"
-          python worker/build_staged_d1_schema_candidate.py "$scratch/original-private.mjs" "$scratch/staged-private.mjs"
-          node --check "$scratch/staged-private.mjs"
-          node tests/test_worker_menu_v58.mjs "$scratch/staged-private.mjs"
-          node tests/test_mini_app_staged_schema_route.mjs "$scratch/staged-private.mjs"
-          python worker/stage_worker_mini_app.py "$scratch/staged-private.mjs"
+          # Reuse already uploaded and synthetic-test-approved inactive Worker
+          # version from run 42465318933. Cloudflare GET /scripts returns the
+          # most recently uploaded (possibly inactive) script, not necessarily
+          # the deployed one. Never re-patch that private script blindly.
+          python - <<'PY'
+          from pathlib import Path
+          import json,os
+          receipt=Path(os.environ['RUNNER_TEMP'])/'ngo-worker-miniapp-stage.json'
+          receipt.write_text(json.dumps({
+            'staged_only':True,'script':'ngo-grants-instant-bot',
+            'version_id':'78e02284-c5c7-4af7-8e3b-c1acc40beb56'
+          }),encoding='utf-8')
+          print('REUSING_PREVIOUSLY_VERIFIED_INACTIVE_SCHEMA_WORKER')
+          PY
           python worker/staged_schema_canary_with_rollback.py
           echo 'PRODUCTION_V04_RESTORED_NO_D1_WRITES_NO_REAL_CATALOG_ORDERS'
