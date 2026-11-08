@@ -4,6 +4,11 @@ on:
   pull_request:
     paths:
       - "mini-app/**"
+      - "scripts/mini_app_v05_health_readonly.py"
+      - "scripts/mini_app_main_owner_readonly.py"
+      - "tests/test_mini_app_v05_health_readonly.py"
+      - "tests/test_mini_app_main_owner_readonly.py"
+      - ".github/workflows/mini-app-v05-health.yml"
       - "worker/mini_app_live_d1_adapter.mjs"
       - "worker/release_mini_app_direct_v05_active.py"
       - "tests/test_mini_app_direct_v05_release.py"
@@ -79,6 +84,11 @@ jobs:
         run: |
           python -m py_compile worker/release_mini_app_direct_v05_active.py
           python -m unittest discover -s tests -p 'test_mini_app_direct_v05_release.py' -v
+      - name: Verify read-only post-release security health and BotFather ownership probes
+        run: |
+          python -m py_compile scripts/mini_app_v05_health_readonly.py scripts/mini_app_main_owner_readonly.py
+          python -m unittest discover -s tests -p 'test_mini_app_v05_health_readonly.py' -v
+          python -m unittest discover -s tests -p 'test_mini_app_main_owner_readonly.py' -v
       - name: Publish preview files as CI artifact, not a public deployment
         uses: actions/upload-artifact@v4
         with:
