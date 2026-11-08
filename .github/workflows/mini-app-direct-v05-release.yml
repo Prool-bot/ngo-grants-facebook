@@ -1,0 +1,43 @@
+name: NGO Grants Mini App v0.5 — guarded active direct API rollout
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/mini-app-direct-v05-release.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ngo-grants-worker-production-deploy
+  cancel-in-progress: false
+
+jobs:
+  safe_release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 9
+    env:
+      CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
+      CF_WORKER_ACCOUNT_ID: ${{ secrets.CF_WORKER_ACCOUNT_ID }}
+      CF_WORKER_API_TOKEN: ${{ secrets.CF_WORKER_API_TOKEN }}
+      NGO_BOT_GATEWAY_URL: ${{ secrets.NGO_BOT_GATEWAY_URL }}
+      NGO_GRANTS_AI_BOT_TOKEN: ${{ secrets.NGO_GRANTS_AI_BOT_TOKEN }}
+      MINI_APP_DIRECT_V05_RELEASE_APPROVED: 'YES_ACTIVATE_SIGNED_V05_CANARY'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Unit-test canary, strict HMAC rejection and automatic rollback
+        run: |
+          python -m py_compile worker/release_mini_app_direct_v05_active.py
+          python -m unittest discover -s tests -p 'test_mini_app_direct_v05_release.py' -v
+          node --test mini-app/tests/*.test.cjs mini-app/tests/*.test.mjs
+      - name: Perform 0.01% canary then 100% only after safe signed-session and legacy smoke
+        run: python worker/release_mini_app_direct_v05_active.py
+      - name: Check status of BotFather Main Mini App configuration (read-only)
+        if: success()
+        run: python scripts/mini_app_main_app_status.py
