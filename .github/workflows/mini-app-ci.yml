@@ -4,6 +4,11 @@ on:
   pull_request:
     paths:
       - "mini-app/**"
+      - "ngo_grants_ai.py"
+      - "tests/test_catalog_main_mini_app_links.py"
+      - "scripts/mini_app_repair_result_3815.py"
+      - "tests/test_mini_app_repair_result_3815.py"
+      - ".github/workflows/mini-app-repair-result-3815.yml"
       - "scripts/mini_app_pinned_shortcut_v05.py"
       - "tests/test_mini_app_pinned_shortcut_v05.py"
       - ".github/workflows/mini-app-pinned-shortcut-v05.yml"
@@ -114,6 +119,10 @@ jobs:
         run: |
           python -m py_compile scripts/mini_app_pinned_shortcut_v05.py
           python -m unittest discover -s tests -p 'test_mini_app_pinned_shortcut_v05.py' -v
+      - name: Verify direct Main Mini App links in all public catalog results
+        run: |
+          python -m unittest discover -s tests -p 'test_catalog_main_mini_app_links.py' -v
+          python -m unittest discover -s tests -p 'test_mini_app_repair_result_3815.py' -v
       - name: Publish preview files as CI artifact, not a public deployment
         uses: actions/upload-artifact@v4
         with:
