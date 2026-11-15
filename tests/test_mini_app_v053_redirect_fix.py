@@ -1,4 +1,7 @@
 from unittest import TestCase
+from pathlib import Path
+import sys
+sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'worker'))
 from worker.patch_mini_app_v053_telegram_redirect_fix import patch, OLD, NEW, MARKER, FLAG
 
 class TelegramRedirectHotfixTests(TestCase):
