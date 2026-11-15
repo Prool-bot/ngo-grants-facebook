@@ -1,0 +1,9 @@
+{
+  "status": "deployed_verified",
+  "script": "ngo-grants-instant-bot",
+  "version_id": "3d990c94-079c-4b57-9ab8-8c8747ecbbef",
+  "previous_version": "431c5e22-07d3-4ed5-8591-d9de9aa0af43",
+  "scope": "only remove redirect:error from Telegram member POST; no queue changes",
+  "verified_at": "2026-11-15T12:04:53.748977+00:00",
+  "run_id": "43711989992"
+}
