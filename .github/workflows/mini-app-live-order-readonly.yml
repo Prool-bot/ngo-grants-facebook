@@ -1,0 +1,28 @@
+name: NGO Grants — read-only first real Mini App order verification
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/mini-app-live-order-readonly.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      NGO_BOT_GATEWAY_URL: ${{ secrets.NGO_BOT_GATEWAY_URL }}
+      NGO_BOT_SYNC_SECRET: ${{ secrets.NGO_BOT_SYNC_SECRET }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - name: Validate privacy-safe aggregate classifier OFFLINE
+        run: |
+          python -m py_compile scripts/mini_app_live_order_readonly_probe.py
+          python -m unittest discover -s tests -p 'test_mini_app_live_order_readonly_probe.py' -v
+      - name: Check authenticated gateway pending queue and public Git state GET ONLY
+        run: python scripts/mini_app_live_order_readonly_probe.py
