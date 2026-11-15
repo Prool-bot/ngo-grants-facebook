@@ -26,6 +26,10 @@ on:
       - "tests/test_mini_app_main_owner_readonly.py"
       - ".github/workflows/mini-app-v05-health.yml"
       - "worker/mini_app_live_d1_adapter.mjs"
+      - "worker/patch_mini_app_v053_telegram_redirect_fix.py"
+      - "worker/release_mini_app_v053_telegram_redirect_fix.py"
+      - "tests/test_mini_app_v053_redirect_fix.py"
+      - ".github/workflows/mini-app-v053-telegram-redirect-release.yml"
       - "worker/patch_mini_app_v052_safe_503.py"
       - "worker/release_mini_app_v052_safe_503.py"
       - "worker/mini_app_expected_worker_version.py"
@@ -133,6 +137,10 @@ jobs:
           python -m py_compile worker/patch_mini_app_v052_safe_503.py worker/release_mini_app_v052_safe_503.py worker/mini_app_expected_worker_version.py
           node --check tests/probe_mini_app_v052_503_code_offline.mjs
           node --check mini-app/direct-client.js
+      - name: Check v0.5.3 Telegram Bot API membership hotfix without real users
+        run: |
+          python -m py_compile worker/patch_mini_app_v053_telegram_redirect_fix.py worker/release_mini_app_v053_telegram_redirect_fix.py
+          python -m unittest discover -s tests -p 'test_mini_app_v053_redirect_fix.py' -v
       - name: Publish preview files as CI artifact, not a public deployment
         uses: actions/upload-artifact@v4
         with:
