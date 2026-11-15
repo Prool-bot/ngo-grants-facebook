@@ -34,6 +34,10 @@ import urllib.request
 from zoneinfo import ZoneInfo
 from catalog_guard_v57 import quality_status, clarification_questions
 from catalog_precision_guard import same_grant_round, supports_explicit_open_applicants
+from catalog_quality_v60 import (
+    effective_entry_deadline, first_mandatory_stage_deadline,
+    same_day_deadline_expired, opportunity_kind,
+)
 from catalog_presentation_v59 import partition_reviewed_rows
 from ngo_grants_v59_delivery import ensure_delivery, deliver_documents, reconcile_document
 from ngo_grants_v59_checkpoint import durable_checkpoint
@@ -2232,7 +2236,8 @@ def _relaxed_subject_candidate(post: str, plan: dict, subject: str) -> tuple[boo
 
 
 def rank_posts(rows: list[dict], query: str, keywords: list[str] | dict,
-               now: date | None = None, facets: dict | None = None) -> list[dict]:
+               now: date | None = None, facets: dict | None = None,
+               as_of_dt: datetime | None = None) -> list[dict]:
     """Two-stage retrieval: explicit-topic evidence first, applicant tier later.
 
 
@@ -2284,9 +2289,14 @@ def rank_posts(rows: list[dict], query: str, keywords: list[str] | dict,
             # Applicant evidence was already checked with quality_status above.
             # Do not reapply the former permissive type heuristic here.
         dates = deadline_dates_from_post(content)
-        deadline = deadline_from_post(content, now)
+        deadline = effective_entry_deadline(content, deadline_from_post(content, now))
         rolling = not dates and ongoing_applications_from_post(content)
         if (deadline and deadline < now) or (not deadline and not rolling):
+            continue
+        if same_day_deadline_expired(content, deadline, as_of_dt):
+            continue
+        if (facets and facets.get("funding_format") == "grant_only"
+                and opportunity_kind(content)[0] == "conference_cfp"):
             continue
         if plan is not None:
             requested_services, requested_people = _intent_concepts(narrow)
@@ -2362,6 +2372,10 @@ def rank_posts(rows: list[dict], query: str, keywords: list[str] | dict,
         opening = application_window_starts_from_post(content)
         note = ('У публікації декілька строків подання. Пізніший раунд може '
                 'мати додаткові вимоги.' if len(dates) > 1 else '')
+        first_stage = first_mandatory_stage_deadline(content)
+        if first_stage and first_stage == deadline:
+            note = ('ПЕРШИЙ ОБОВ’ЯЗКОВИЙ ЕТАП: '
+                    + first_stage.strftime('%d.%m.%Y') + '. ' + note)
         if opening and opening > now:
             note = (f'Прийом заявок починається {opening.strftime("%d.%m.%Y")}. '
                     + note)
@@ -3450,6 +3464,11 @@ def pdf_catalog(path: Path, title: str, topic: str, rows: list[dict], stamp: dat
                 fields['warning'] = previous + ' ' + caution
         if row.get('_deadline_note'):
             fields['warning'] = fields['warning'] + ' ' + row['_deadline_note']
+        kind = row.get('_opportunity_type')
+        if kind and kind != 'grant_or_other':
+            label = str(row.get('_opportunity_label') or '').strip()
+            if label and label not in fields['warning']:
+                fields['warning'] = label + ' ' + fields['warning']
 
 
 
@@ -4501,7 +4520,7 @@ def make_one_catalog(state: dict, rows: list[dict], *, dry_run=False) -> bool:
             title = keywords.get('title', query[:100])
         else:
             title, keywords = ai_expand(query)
-        ranked = rank_posts(rows, query, keywords, facets=facets)
+        ranked = rank_posts(rows, query, keywords, facets=facets, as_of_dt=now)
         if not ranked:
             mark_no_results(state, entry, 'no_candidate')
             state["queue"].pop(0)
@@ -4576,7 +4595,7 @@ def make_one_catalog(state: dict, rows: list[dict], *, dry_run=False) -> bool:
     # Intentionally opt-in to preserve the operational v5.7/v5.8 contract.
     if preview_mode:
         direct_rows, conditional_rows = partition_reviewed_rows(
-            picked, facets, as_of=now.astimezone(KYIV).date())
+            picked, facets, as_of=now.astimezone(KYIV).date(), as_of_dt=now)
         preview_slug = (f"ngo_grants_v59_preview_"
                         f"{now.astimezone(KYIV).strftime('%Y%m%d')}_{entry['id']}")
         PDF_DIR.mkdir(parents=True, exist_ok=True)

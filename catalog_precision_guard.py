@@ -43,6 +43,34 @@ def _named_programme_signatures(text: str) -> set[tuple[str, ...]]:
             result.add(rare)
     return result
 
+def _latin_call_names(text: str) -> set[tuple[str, ...]]:
+    """Case-insensitive actual programme names, including all-caps titles.
+
+    E.g. ASPRS GEOSPATIAL SCIENCE RESEARCH GRANT vs
+    Geospatial Science Research Grant within Ukrainian prose.
+    Avoid matching a generic two-word 'research grant'.
+    """
+    phrases = set()
+    for match in re.finditer(
+        r"\b((?:[A-Za-z]{3,}\s+){2,8}"
+        r"(?:grants?|awards?|fellowships?|scholarships?))\b",
+        str(text or "")[:2600], re.I
+    ):
+        words = tuple(re.findall(r"[a-z]{3,}", match.group().casefold()))
+        if len(words) >= 4:
+            phrases.add(words[-4:])
+    return phrases
+
+
+def _shared_donor_acronyms(a: str, b: str) -> bool:
+    stop = {"NGO", "USD", "EUR", "OPEN", "CALL", "GRANT", "GRANTS",
+            "THE", "FOR", "WITH", "PDF"}
+    pattern = r"(?<![A-Za-z])[A-Z]{3,12}(?![A-Za-z])"
+    left = set(re.findall(pattern, str(a or "")[:1500])) - stop
+    right = set(re.findall(pattern, str(b or "")[:1500])) - stop
+    return bool(left & right)
+
+
 def _specific_official_paths(row: dict) -> set[str]:
     urls = row.get("canonical_urls") or row.get("urls") or []
     keys = set()
@@ -81,7 +109,22 @@ def same_grant_round(a: dict, b: dict) -> bool:
         return True
     left = _named_programme_signatures(a.get("text") or "")
     right = _named_programme_signatures(b.get("text") or "")
-    return bool(left & right)
+    if left & right:
+        return True
+    # These distinctive names survive capitalization, donor URL aliases and
+    # Ukrainian introductions. Requiring a shared donor acronym makes a
+    # common research/award phrase alone insufficient to merge calls.
+    latin = _latin_call_names(a.get("text") or "") & _latin_call_names(
+        b.get("text") or "")
+    if not latin:
+        return False
+    generic = _COMMON_ENGLISH | {"research", "science", "award", "awards",
+                                  "fellowship", "scholarship"}
+    return (
+        _shared_donor_acronyms(a.get("text") or "", b.get("text") or "")
+        and any(len([w for w in phrase if w not in generic]) >= 1
+                for phrase in latin)
+    )
 
 def _detail_modalities(detail: str) -> set[str]:
     q = unicodedata.normalize("NFKC", str(detail or "")).casefold()
