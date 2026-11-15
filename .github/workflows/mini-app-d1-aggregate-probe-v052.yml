@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - '.github/workflows/mini-app-d1-aggregate-probe-v052.yml'
+      - 'worker/patch_mini_app_d1_aggregate_probe_v052.py'
 
 permissions:
   contents: read

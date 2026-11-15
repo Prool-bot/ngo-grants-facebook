@@ -47,9 +47,18 @@ ROUTE='''
   }
 '''
 def patch(s:str)->str:
-    if (not s or len(s)>8_000_000 or s.count(ANCHOR)!=1 or
-        MARKER in s or s.count("NGO_MINI_APP_V051_D1_READBACK_STATUS_COMPATIBILITY")!=1 or
-        s.count('const __ngoMiniAppDirectRouteEnabled=true;')!=1):
+    checks={
+      "size_ok":bool(s) and len(s)<8_000_000,
+      "fetch_anchor_count":s.count(ANCHOR),
+      "previous_probe_absent":MARKER not in s,
+      "v051_marker_count":s.count("NGO_MINI_APP_V051_D1_READBACK_STATUS_COMPATIBILITY"),
+      "enabled_flag_count":s.count("const __ngoMiniAppDirectRouteEnabled=true;"),
+      "corrected_status_list":'["new","synced","pending","processing","published","no_candidate","done","completed"]' in s
+    }
+    print("PRIVATE_CURRENT_WORKER_FINGERPRINT_SAFE="+repr(checks))
+    if (not checks["size_ok"] or checks["fetch_anchor_count"]!=1 or
+        not checks["previous_probe_absent"] or checks["v051_marker_count"]!=1 or
+        checks["enabled_flag_count"]!=1 or not checks["corrected_status_list"]):
         raise RuntimeError("Current live v0.5.1 fingerprint missing, abort")
     out=s.replace(ANCHOR,ANCHOR+ROUTE,1)
     if out.count(MARKER)!=1:return_error=1
