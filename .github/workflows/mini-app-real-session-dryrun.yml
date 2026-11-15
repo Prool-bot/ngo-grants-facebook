@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - '.github/workflows/mini-app-real-session-dryrun.yml'
+      - 'worker/mini_app_expected_worker_version.py'
 
 permissions:
   contents: read
@@ -34,7 +35,7 @@ jobs:
         with: {python-version: '3.12'}
       - uses: actions/setup-node@v4
         with: {node-version: '22'}
-      - name: Validate no-write preflight scripts and real v0.5.2 security health
+      - name: Validate no-write preflight scripts and real v0.5.3 security health
         run: |
           python -m py_compile worker/patch_mini_app_real_session_dryrun.py worker/mini_app_real_session_dryrun_with_rollback.py
           python -m pip install telethon==1.45.0
