@@ -8,6 +8,7 @@ from __future__ import annotations
 import json,os,re,sys
 from pathlib import Path
 from patch_live_worker_mini_app_direct_v05 import direct_html
+from patch_mini_app_d1_aggregate_probe_v052 import ROUTE as PREVIOUS_TEMP_READONLY_ROUTE
 
 MARKER="NGO_MINI_APP_V052_503_CATEGORY_DIAGNOSTIC"
 OLD_HTML_FN=""" function jsonError(response){
@@ -49,6 +50,17 @@ def replace_one(raw:str,old:str,new:str,why:str)->str:
     return raw.replace(old,new,1)
 
 def patch(src:str,root:Path)->str:
+    # Cloudflare's raw script download may return the last staged source
+    # rather than the 100%-deployed source. Our prior read-only diagnostic
+    # created one exact temporary route. Strip it ONLY with byte-for-byte
+    # equality to the known audited route; never carry a debug endpoint into
+    # production accidentally.
+    if 'NGO_MINI_APP_READONLY_D1_AGG_V052' in src:
+        if src.count(PREVIOUS_TEMP_READONLY_ROUTE)!=1:
+            raise RuntimeError('Unknown previously staged Worker diagnostic source')
+        src=src.replace(PREVIOUS_TEMP_READONLY_ROUTE,'',1)
+    if 'NGO_MINI_APP_READONLY_D1_AGG_V052' in src:
+        raise RuntimeError('Temporary internal audit route still present')
     required=("NGO_MINI_APP_V051_D1_READBACK_STATUS_COMPATIBILITY",
               "NGO_MINI_APP_DIRECT_API_DORMANT_V05",
               "NGO_GRANTS_NATIVE_MINI_APP_V01","NGO_MINI_APP_NAV_FIX_V02",
