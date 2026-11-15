@@ -5,7 +5,18 @@ import {webcrypto,createHmac} from 'node:crypto';
 if(!globalThis.crypto)globalThis.crypto=webcrypto;
 const source=readFileSync(process.argv[2],'utf8');
 assert.ok(source.includes("NGO_MINI_APP_V052_503_CATEGORY_DIAGNOSTIC"),"Updated source missing");
-assert.ok(source.includes("message+=' (код: '+code+')'"),"User-visible safe code missing");
+const marker="const __ngoMiniAppDirectHTML=";
+const offset=source.indexOf(marker);
+assert.ok(offset>=0,"Embedded Mini App HTML missing");
+const quotedStart=source.indexOf('"',offset+marker.length);
+let quotedEnd=-1;
+for(let i=quotedStart+1;i<source.length;i++){
+  if(source[i]===String.fromCharCode(92)){i++;continue;}
+  if(source[i]==='"'){quotedEnd=i;break;}
+}
+assert.ok(quotedStart>=0&&quotedEnd>quotedStart,"Embedded HTML JSON string unavailable");
+const html=JSON.parse(source.slice(quotedStart,quotedEnd+1));
+assert.ok(html.includes("message+=' (код: '+code+')'"),"User-visible safe code missing");
 const worker=await import("data:text/javascript;base64,"+Buffer.from(source).toString('base64'));
 const BOT_TOKEN='123456789:SYNTHETIC-ONLY-NEVER-SEND';
 const USER=93217;
