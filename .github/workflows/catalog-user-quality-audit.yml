@@ -1,10 +1,23 @@
 name: NGO Grants — recent real-user PDF catalog quality audit (read only)
 
 on:
+  workflow_dispatch:
+  schedule:
+    - cron: '20 */6 * * *'
   push:
     branches: [main]
     paths:
       - '.github/workflows/catalog-user-quality-audit.yml'
+      - 'ai_catalogs/state.json'
+      - 'ai_catalogs/pdfs/**'
+      - 'scripts/check_new_catalog_quality.py'
+  pull_request:
+    paths:
+      - '.github/workflows/catalog-user-quality-audit.yml'
+      - 'scripts/check_new_catalog_quality.py'
+      - 'catalog_precision_guard.py'
+      - 'catalog_quality_v60.py'
+      - 'tests/test_catalog_postpublish_qa.py'
 
 permissions:
   contents: read
@@ -23,3 +36,5 @@ jobs:
           python -m pip install pypdf==5.9.0
           python -m py_compile scripts/audit_recent_public_catalog_pdfs.py
           python scripts/audit_recent_public_catalog_pdfs.py
+      - name: Post-fix user catalogs acceptance check (no replay, baseline #3935)
+        run: python scripts/check_new_catalog_quality.py
