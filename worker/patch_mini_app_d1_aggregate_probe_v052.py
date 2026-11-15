@@ -10,7 +10,7 @@ import os,re,sys
 from pathlib import Path
 
 MARKER="NGO_MINI_APP_READONLY_D1_AGG_V052"
-ANCHOR=r"\\bexport\\s+default\\s*\\{\\s*async\\s+fetch\\s*\\(\\s*request\\s*,\\s*env\\s*\\)\\s*\\{"
+ANCHOR=r"\bexport\s+default\s*\{\s*async\s+fetch\s*\(\s*request\s*,\s*env\s*\)\s*\{"
 ROUTE='''
   // NGO_MINI_APP_READONLY_D1_AGG_V052 (temporary, authorized, count-only)
   if(new URL(request.url).pathname==="/_internal/miniapp/order-count-health"){
