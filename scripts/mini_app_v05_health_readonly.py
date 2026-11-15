@@ -17,6 +17,7 @@ sys.path.insert(0,str(ROOT/"scripts"))
 from release_mini_app_direct_v05_active import (
     api,health,forbidden,mini_app_smoke,inspect,SCRIPT,NEW
 )
+from mini_app_expected_worker_version import expected_version
 from mini_app_public_preflight import telegram
 
 
@@ -24,7 +25,7 @@ def assess_deployment(current:dict)->None:
     deployments=current.get("deployments") or []
     versions=deployments[0].get("versions") if deployments else []
     if (len(versions or [])!=1 or
-        versions[0].get("version_id")!=NEW or
+        versions[0].get("version_id")!=expected_version() or
         versions[0].get("percentage")!=100):
         raise RuntimeError("Unexpected live Mini App Cloudflare Worker deployment")
 
