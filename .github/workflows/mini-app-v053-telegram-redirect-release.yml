@@ -1,0 +1,53 @@
+name: NGO Grants Mini App v0.5.3 — fix Telegram membership upstream redirect
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/mini-app-v053-telegram-redirect-release.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ngo-grants-worker-production-deploy
+  cancel-in-progress: false
+
+jobs:
+  hotfix:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
+      CF_WORKER_ACCOUNT_ID: ${{ secrets.CF_WORKER_ACCOUNT_ID }}
+      CF_WORKER_API_TOKEN: ${{ secrets.CF_WORKER_API_TOKEN }}
+      NGO_BOT_GATEWAY_URL: ${{ secrets.NGO_BOT_GATEWAY_URL }}
+      NGO_GRANTS_AI_BOT_TOKEN: ${{ secrets.NGO_GRANTS_AI_BOT_TOKEN }}
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      NGO_V053_MEMBERSHIP_RELEASE_APPROVED: 'YES_RELEASE_MINI_APP_V053_TELEGRAM_REDIRECT_FIX'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Verify exact one-option hotfix, offline tests and current production health
+        run: |
+          python -m py_compile worker/patch_mini_app_v053_telegram_redirect_fix.py worker/release_mini_app_v053_telegram_redirect_fix.py
+          python -m unittest discover -s tests -p 'test_mini_app_v053_redirect_fix.py' -v
+          node --test mini-app/tests/live-d1-adapter.test.mjs
+          python scripts/mini_app_v05_health_readonly.py
+      - name: Stage verified v0.5.3 with exact change, strict SQLite 201 and reversible 0.01% canary
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          scratch="$(mktemp -d "${RUNNER_TEMP}/mini-app-v053-membership.XXXXXX")"
+          trap 'rm -rf "$scratch"' EXIT
+          python worker/read_live_mini_app_v05_diagnosis.py "$scratch/original.mjs"
+          python worker/patch_mini_app_v053_telegram_redirect_fix.py "$scratch/original.mjs" "$scratch/fixed.mjs"
+          node --check "$scratch/fixed.mjs"
+          node --disable-warning=ExperimentalWarning tests/probe_mini_app_v05_actual_sqlite_offline.mjs "$scratch/fixed.mjs"
+          node tests/probe_mini_app_v052_503_code_offline.mjs "$scratch/fixed.mjs"
+          python worker/stage_worker_mini_app.py "$scratch/fixed.mjs"
+          python worker/release_mini_app_v053_telegram_redirect_fix.py
