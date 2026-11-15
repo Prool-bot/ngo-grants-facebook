@@ -12,6 +12,7 @@ import re
 ORIGINAL="4b0b8562-d2af-46a5-aa87-8acfb69b2151"
 RECEIPT=Path(__file__).resolve().parents[1]/"launches/mini_app_v051_live_version.json"
 LATEST_RECEIPT=Path(__file__).resolve().parents[1]/"launches/mini_app_v052_live_version.json"
+V053_RECEIPT=Path(__file__).resolve().parents[1]/"launches/mini_app_v053_live_version.json"
 
 def expected_version()->str:
     if not RECEIPT.is_file():return ORIGINAL
@@ -30,4 +31,12 @@ def expected_version()->str:
         not isinstance(successor,str) or
         not re.fullmatch(r"[a-f0-9-]{36}",successor) or successor==version):
         raise RuntimeError("Unexpected new approved Worker diagnostic version receipt")
-    return successor
+    if not V053_RECEIPT.is_file():return successor
+    hotfix=json.loads(V053_RECEIPT.read_text("utf-8"))
+    fixed=hotfix.get("version_id")
+    if (hotfix.get("status")!="deployed_verified" or
+        hotfix.get("previous_version")!=successor or
+        not isinstance(fixed,str) or
+        not re.fullmatch(r"[a-f0-9-]{36}",fixed) or fixed==successor):
+        raise RuntimeError("Unexpected approved Telegram upstream hotfix version")
+    return fixed
