@@ -2442,7 +2442,10 @@ def cf_ai(system: str, payload: object, max_tokens: int = 650,
     data = {"messages": [{"role": "system", "content": system},
                          {"role": "user", "content": json.dumps(payload, ensure_ascii=False)}],
             "max_tokens": max_tokens, "temperature": 0.0}
-    res = http_json(url, data=data, headers={"Authorization": "Bearer " + token}, timeout=35)
+    # Cloudflare AI inference may exceed 35s on a cold start. A longer
+    # single-request read timeout is safer than retrying a potentially
+    # completed POST, which can double-count the limited AI allowance.
+    res = http_json(url, data=data, headers={"Authorization": "Bearer " + token}, timeout=60)
     result = res.get('result') or {}
     if not isinstance(result, dict):
         raise AIResponseFormatError('Cloudflare AI повернув відповідь невідомого формату')
