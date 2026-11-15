@@ -21,8 +21,18 @@
   429:'Денний ліміт замовлень вичерпано.',
   503:'Сервіс оформлення тимчасово недоступний.'
  };
- function jsonError(response){
-   return new Error(ERRORS[response?.status]||'Не вдалося підтвердити замовлення.');
+ async function jsonError(response){
+   let message=ERRORS[response?.status]||'Не вдалося підтвердити замовлення.';
+   if(response?.status===503){
+     let code='UNKNOWN';
+     try{
+       const body=await response.json();
+       const known=['CONFIG','D1_READ','QUEUE_NO_COMMIT','TELEGRAM_UPSTREAM'];
+       if(known.includes(body?.error_code))code=body.error_code;
+     }catch(_){/* Do not log private server errors or request parameters. */}
+     message+=' (код: '+code+')';
+   }
+   return new Error(message);
  }
  function verifyReceipt(response,body){
    if(!response||![200,201].includes(response.status)||
@@ -71,7 +81,7 @@
          })
        });
        if(!response||typeof response.json!=='function'||![200,201].includes(response.status))
-         throw jsonError(response);
+         throw await jsonError(response);
        let body;
        try{body=await response.json();}
        catch(_){throw new Error('Сервер повернув некоректну відповідь.');}

@@ -26,6 +26,11 @@ on:
       - "tests/test_mini_app_main_owner_readonly.py"
       - ".github/workflows/mini-app-v05-health.yml"
       - "worker/mini_app_live_d1_adapter.mjs"
+      - "worker/patch_mini_app_v052_safe_503.py"
+      - "worker/release_mini_app_v052_safe_503.py"
+      - "worker/mini_app_expected_worker_version.py"
+      - "tests/probe_mini_app_v052_503_code_offline.mjs"
+      - ".github/workflows/mini-app-v052-safe-503-release.yml"
       - "worker/release_mini_app_direct_v05_active.py"
       - "tests/test_mini_app_direct_v05_release.py"
       - ".github/workflows/mini-app-direct-v05-release.yml"
@@ -123,6 +128,11 @@ jobs:
         run: |
           python -m unittest discover -s tests -p 'test_catalog_main_mini_app_links.py' -v
           python -m unittest discover -s tests -p 'test_mini_app_repair_result_3815.py' -v
+      - name: Validate safe v0.5.2 diagnosis patch and 503 client syntax OFFLINE
+        run: |
+          python -m py_compile worker/patch_mini_app_v052_safe_503.py worker/release_mini_app_v052_safe_503.py worker/mini_app_expected_worker_version.py
+          node --check tests/probe_mini_app_v052_503_code_offline.mjs
+          node --check mini-app/direct-client.js
       - name: Publish preview files as CI artifact, not a public deployment
         uses: actions/upload-artifact@v4
         with:

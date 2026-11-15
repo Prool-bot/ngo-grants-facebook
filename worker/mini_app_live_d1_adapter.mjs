@@ -78,29 +78,32 @@ export async function checkChannelMembership({userId,token,request=fetch}){
         body:JSON.stringify({chat_id:CHANNEL,user_id:userId}),
         redirect:"error"
       });
-  }catch{fail("UPSTREAM_UNAVAILABLE");}
-  if(!response||!response.ok)fail("UPSTREAM_UNAVAILABLE");
+  }catch{fail("TELEGRAM_UPSTREAM");}
+  if(!response||!response.ok)fail("TELEGRAM_UPSTREAM");
   let parsed;
-  try{parsed=await response.json();}catch{fail("UPSTREAM_UNAVAILABLE");}
+  try{parsed=await response.json();}catch{fail("TELEGRAM_UPSTREAM");}
   if(!parsed?.ok||!parsed?.result||typeof parsed.result!=="object")
-    fail("UPSTREAM_UNAVAILABLE");
+    fail("TELEGRAM_UPSTREAM");
   const member=parsed.result;
-  if(member.user&&member.user.id!==userId)fail("UPSTREAM_UNAVAILABLE");
+  if(member.user&&member.user.id!==userId)fail("TELEGRAM_UPSTREAM");
   if(["creator","administrator","member"].includes(member.status)||
      (member.status==="restricted"&&member.is_member===true))
     return true;
   if(["left","kicked"].includes(member.status)||
      (member.status==="restricted"&&member.is_member===false))
     fail("NOT_SUBSCRIBED");
-  fail("UPSTREAM_UNAVAILABLE");
+  fail("TELEGRAM_UPSTREAM");
 }
 
 /** Select only the receipt metadata; never echo a request topic or user hash. */
 async function lookupOrder(DB,updateId,day){
   if(!DB||typeof DB.prepare!=="function")fail("CONFIG");
-  const row=await DB.prepare(
-    "SELECT update_id, day, status FROM requests WHERE update_id = ? LIMIT 1"
-  ).bind(updateId).first();
+  let row;
+  try{
+    row=await DB.prepare(
+      "SELECT update_id, day, status FROM requests WHERE update_id = ? LIMIT 1"
+    ).bind(updateId).first();
+  }catch(_){fail("D1_READ");}
   if(row===null||row===undefined)return null;
   if(row.update_id!==updateId||row.day!==day)fail("CONFLICT");
   if(!["new","synced","pending","processing","published","no_candidate","done","completed"].includes(row.status))
@@ -151,7 +154,7 @@ export function createExistingQueueAdapter({
     const saved=await lookupOrder(env.DB,updateId,today);
     if(!saved){
       // Never misreport a database/network exception as a daily quota.
-      if(legacyError)fail("UPSTREAM_UNAVAILABLE");
+      if(legacyError)fail("QUEUE_NO_COMMIT");
       fail("DAILY_LIMIT");
     }
     return {status:"created",orderId:saved.orderId};

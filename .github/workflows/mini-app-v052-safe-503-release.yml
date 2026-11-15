@@ -1,0 +1,53 @@
+name: NGO Grants Mini App v0.5.2 — safe 503 diagnosis canary and promotion
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/mini-app-v052-safe-503-release.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ngo-grants-worker-production-deploy
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
+      CF_WORKER_ACCOUNT_ID: ${{ secrets.CF_WORKER_ACCOUNT_ID }}
+      CF_WORKER_API_TOKEN: ${{ secrets.CF_WORKER_API_TOKEN }}
+      NGO_BOT_GATEWAY_URL: ${{ secrets.NGO_BOT_GATEWAY_URL }}
+      NGO_GRANTS_AI_BOT_TOKEN: ${{ secrets.NGO_GRANTS_AI_BOT_TOKEN }}
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      NGO_V052_DIAG_RELEASE_APPROVED: 'YES_RELEASE_MINI_APP_V052_SAFE_DIAGNOSTIC'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Offline syntax and health regression (no writes)
+        run: |
+          python -m py_compile worker/patch_mini_app_v052_safe_503.py worker/release_mini_app_v052_safe_503.py
+          python -m unittest discover -s tests -p 'test_mini_app_v05_health_readonly.py' -v
+          node --check tests/probe_mini_app_v052_503_code_offline.mjs
+          python scripts/mini_app_v05_health_readonly.py
+      - name: Apply guarded source-only change, verify synthetic codes, canary and restore on failure
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          scratch="$(mktemp -d "${RUNNER_TEMP}/mini-app-v052-diagnostics.XXXXXX")"
+          trap 'rm -rf "$scratch"' EXIT
+          python worker/read_live_mini_app_v05_diagnosis.py "$scratch/baseline.mjs"
+          python worker/patch_mini_app_v052_safe_503.py "$scratch/baseline.mjs" "$scratch/diagnostic.mjs"
+          node --check "$scratch/diagnostic.mjs"
+          node --disable-warning=ExperimentalWarning tests/probe_mini_app_v05_actual_sqlite_offline.mjs "$scratch/diagnostic.mjs"
+          node tests/probe_mini_app_v052_503_code_offline.mjs "$scratch/diagnostic.mjs"
+          python worker/stage_worker_mini_app.py "$scratch/diagnostic.mjs"
+          python worker/release_mini_app_v052_safe_503.py

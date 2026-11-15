@@ -11,6 +11,7 @@ import re
 
 ORIGINAL="4b0b8562-d2af-46a5-aa87-8acfb69b2151"
 RECEIPT=Path(__file__).resolve().parents[1]/"launches/mini_app_v051_live_version.json"
+LATEST_RECEIPT=Path(__file__).resolve().parents[1]/"launches/mini_app_v052_live_version.json"
 
 def expected_version()->str:
     if not RECEIPT.is_file():return ORIGINAL
@@ -21,4 +22,12 @@ def expected_version()->str:
         not isinstance(version,str) or
         not re.fullmatch(r"[a-f0-9-]{36}",version) or version==ORIGINAL):
         raise RuntimeError("Unexpected approved Worker version receipt")
-    return version
+    if not LATEST_RECEIPT.is_file():return version
+    latest=json.loads(LATEST_RECEIPT.read_text("utf-8"))
+    successor=latest.get("version_id")
+    if (latest.get("status")!="deployed_verified" or
+        latest.get("previous_version")!=version or
+        not isinstance(successor,str) or
+        not re.fullmatch(r"[a-f0-9-]{36}",successor) or successor==version):
+        raise RuntimeError("Unexpected new approved Worker diagnostic version receipt")
+    return successor
