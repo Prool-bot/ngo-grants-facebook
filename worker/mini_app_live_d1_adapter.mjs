@@ -103,7 +103,7 @@ async function lookupOrder(DB,updateId,day){
   ).bind(updateId).first();
   if(row===null||row===undefined)return null;
   if(row.update_id!==updateId||row.day!==day)fail("CONFLICT");
-  if(!["pending","processing","published","no_candidate","done","completed"].includes(row.status))
+  if(!["new","synced","pending","processing","published","no_candidate","done","completed"].includes(row.status))
     fail("CONFLICT");
   return {orderId:updateId};
 }
