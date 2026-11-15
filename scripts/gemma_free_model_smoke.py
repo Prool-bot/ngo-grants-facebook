@@ -43,6 +43,14 @@ def check():
             print("FREE_GEMMA_RESULT_FIELDS="+",".join(safe_fields))
             print("FREE_GEMMA_RESPONSE_TYPE="+
                   type(result.get("response")).__name__)
+            choices=result.get("choices") or []
+            if isinstance(choices,list) and len(choices)==1:
+                first=choices[0]
+                message=first.get("message") if isinstance(first,dict) else None
+                content=message.get("content") if isinstance(message,dict) else None
+                print("FREE_GEMMA_CHAT_CONTENT_TYPE="+type(content).__name__)
+                if isinstance(content,str):
+                    return dict(answer,result={"response":content})
         return answer
     app.http_json=gemma_http
     print("FREE_GEMMA_SMOKE_START=True")
