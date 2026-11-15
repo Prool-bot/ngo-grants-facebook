@@ -141,6 +141,21 @@ try{
  };
  console.log("LIVE_V05_ACTUAL_CREATE_REQUEST_OFFLINE_DIAGNOSIS");
  console.log(JSON.stringify(result,null,2));
+ // A second *different* idempotency UUID on the same Kyiv day mimics
+ // reopening the Mini App, while retaining the same signed synthetic user.
+ // Must fail safely as daily quota rather than an opaque 503.
+ if(r.status===201){
+   const otherId='223e4567-e89b-42d3-a456-426614174000';
+   const other=await worker.default.fetch(new Request(
+     "https://ngo-grants-instant-bot.oleh-protasoff.workers.dev/api/mini-app/order",
+     {method:"POST",headers:{"content-type":"application/json"},
+      body:JSON.stringify({...body,idempotencyKey:otherId})}
+   ),{BOT_TOKEN:fakeToken,DB,SYNC_SECRET:"OFFLINE-NO-USE",WEBHOOK_SECRET:"OFFLINE"});
+   const diag=await other.json();
+   console.log("SAME_USER_NEW_UUID_STATUS="+String(other.status));
+   console.log("SAME_USER_NEW_UUID_SAFE_CODE="+String(diag?.error_code||diag?.status||"OTHER"));
+   console.log("SAME_USER_NEW_UUID_DB_ROWS="+String(sqlite.prepare("SELECT COUNT(*) AS n FROM requests").get().n));
+ }
  if(r.status!==201&&r.status!==200){
    throw Error("Actual legacy createRequest pathway returns "+r.status+
    " in an isolated synthetic offline scenario");
