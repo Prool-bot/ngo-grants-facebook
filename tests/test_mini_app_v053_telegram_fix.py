@@ -2,6 +2,9 @@ from unittest import TestCase
 from pathlib import Path
 import sys
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'worker'))
+from pathlib import Path
+import sys
+sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'worker'))
 from worker.patch_mini_app_v053_telegram_fix import patch,OLD,NEW,MARKER
 from worker.patch_mini_app_telegram_upstream_probe_v053 import ROUTE
 from worker.patch_mini_app_real_session_dryrun import ROUTE as DRY
