@@ -33,6 +33,7 @@ import urllib.parse
 import urllib.request
 from zoneinfo import ZoneInfo
 from catalog_guard_v57 import quality_status, clarification_questions
+from catalog_precision_guard import same_grant_round, supports_explicit_open_applicants
 from catalog_presentation_v59 import partition_reviewed_rows
 from ngo_grants_v59_delivery import ensure_delivery, deliver_documents, reconcile_document
 from ngo_grants_v59_checkpoint import durable_checkpoint
@@ -1630,7 +1631,8 @@ def dedupe_programmes(rows: list[dict]) -> list[dict]:
     output: list[dict] = []
     seen_urls: dict[str, list[dict]] = {}
     for row in rows:
-        if any(_same_round_by_evidence(row, earlier) for earlier in output):
+        if any(_same_round_by_evidence(row, earlier) or same_grant_round(row, earlier)
+               for earlier in output):
             continue
         urls = row.get('canonical_urls') or row.get('urls') or []
         keys = {_clean_official_url(str(u)) for u in urls}
@@ -2242,6 +2244,10 @@ def rank_posts(rows: list[dict], query: str, keywords: list[str] | dict,
         if not content:
             continue
         narrow = (facets.get('detail') or facets.get('custom_sector') or '') if facets else query
+        # Explicit OR-set of individual / informal / school-pupil applicants
+        # cannot be satisfied by an institutional grant that only serves youth.
+        if facets and not supports_explicit_open_applicants(content, facets.get('detail') or ''):
+            continue
         if narrow and not strict_topic_match(narrow, content):
             continue
         # For film searches by an NGO, reject individual-only and company-only
