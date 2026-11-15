@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - '.github/workflows/mini-app-v052-safe-503-release.yml'
+      - 'tests/probe_mini_app_v052_503_code_offline.mjs'
 
 permissions:
   contents: write
