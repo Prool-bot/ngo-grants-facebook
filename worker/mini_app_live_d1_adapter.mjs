@@ -75,8 +75,7 @@ export async function checkChannelMembership({userId,token,request=fetch}){
       token+"/getChatMember",{
         method:"POST",
         headers:{"content-type":"application/json"},
-        body:JSON.stringify({chat_id:CHANNEL,user_id:userId}),
-        redirect:"error"
+        body:JSON.stringify({chat_id:CHANNEL,user_id:userId})
       });
   }catch{fail("TELEGRAM_UPSTREAM");}
   if(!response||!response.ok)fail("TELEGRAM_UPSTREAM");
