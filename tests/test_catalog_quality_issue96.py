@@ -1,6 +1,8 @@
 """Issue #96 regression: real failure patterns, no network/Telegram/AI use."""
 import unittest
 from datetime import date, datetime, timezone
+import json
+from pathlib import Path
 
 from catalog_precision_guard import same_grant_round
 from catalog_quality_v60 import (
@@ -156,6 +158,53 @@ class EligibilityAndTypeTests(unittest.TestCase):
         self.assertFalse(d)
         self.assertEqual("conference_cfp", c[0]["_opportunity_type"])
 
+
+
+class ArchivedNovember2026RegressionTests(unittest.TestCase):
+    """Match actual channel archive, not just synthetic headline fixtures."""
+
+    @classmethod
+    def setUpClass(cls):
+        root = Path(__file__).resolve().parents[1] / "archive" / "telegram" / "months"
+        cls.posts = {}
+        ids = {2561, 2678, 3357, 3590, 3623, 2490, 2596, 2537}
+        for month in ("2026-09", "2026-10"):
+            for item in json.loads((root / (month + ".json")).read_text("utf-8")):
+                if item.get("id") in ids:
+                    cls.posts[item["id"]] = item["text"]
+        if set(cls.posts) != ids:
+            raise AssertionError("Some archived real QA samples have disappeared")
+
+    def test_real_kaust_aasm_and_optional_simpson(self):
+        self.assertEqual(date(2026, 10, 1),
+                         first_mandatory_stage_deadline(self.posts[2561]))
+        self.assertEqual(date(2026, 10, 19),
+                         first_mandatory_stage_deadline(self.posts[2678]))
+        self.assertIsNone(first_mandatory_stage_deadline(self.posts[3357]))
+        rows = [row(2561, self.posts[2561], "2027-01-15"),
+                row(2678, self.posts[2678], "2027-03-08"),
+                row(3357, self.posts[3357], "2027-01-29")]
+        direct, conditional = partition_reviewed_rows(rows, None, as_of=TODAY)
+        self.assertEqual([3357], [x["id"] for x in direct])
+        self.assertFalse(conditional)
+
+    def test_real_asprs_duplicate_and_unknown_individual_qualifications(self):
+        a = row(3623, self.posts[3623], "2026-12-01", "direct")
+        b = row(3590, self.posts[3590], "2026-12-01", "conditional")
+        self.assertTrue(same_grant_round(a, b))
+        self.assertEqual(1, len(dedupe_programmes([a, b])))
+        facets = {"audience": "individual", "sectors": ["education", "it", "social"]}
+        direct, conditional = partition_reviewed_rows([a, b], facets, as_of=TODAY)
+        self.assertFalse(direct)
+        self.assertEqual(1, len(conditional))
+        self.assertTrue(conditional[0]["_conditional_reason"])
+
+    def test_real_meos_type_ushmm_and_naf_qualification(self):
+        self.assertEqual("conference_cfp",
+                         opportunity_kind(self.posts[2537])[0])
+        for ident in (2490, 2596):
+            self.assertTrue(qualification_warnings(
+                self.posts[ident], {"audience": "individual"}))
 
 if __name__ == "__main__":
     unittest.main()
