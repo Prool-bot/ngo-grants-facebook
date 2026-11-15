@@ -1,0 +1,9 @@
+{
+  "status": "deployed_verified",
+  "script": "ngo-grants-instant-bot",
+  "version_id": "ca84315a-f896-490d-93ef-f65e8eeaa0e2",
+  "previous_version": "4b0b8562-d2af-46a5-aa87-8acfb69b2151",
+  "scope": "only D1 requests.status new/synced readback allowlist",
+  "verified_at": "2026-11-15T11:06:35.592341+00:00",
+  "run_id": "43707278672"
+}
