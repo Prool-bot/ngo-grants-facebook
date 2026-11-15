@@ -11,7 +11,7 @@ import sys
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/"worker"))
 from read_live_mini_app_v04_contract import call,SCRIPT,REQUIRED
 from build_mini_app_candidate import extract_js,MAX_BYTES
-from release_mini_app_direct_v05_active import NEW
+from mini_app_expected_worker_version import expected_version
 
 def main():
     if (len(sys.argv)!=2 or os.getenv("GITHUB_ACTIONS")!="true" or
@@ -28,7 +28,7 @@ def main():
     base=f"https://api.cloudflare.com/client/v4/accounts/{account}/workers/scripts/{SCRIPT}"
     deployments=call(base+"/deployments",token,100000,structured=True).get("deployments") or []
     versions=(deployments[0].get("versions") or []) if deployments else []
-    if (len(versions)!=1 or versions[0].get("version_id")!=NEW or
+    if (len(versions)!=1 or versions[0].get("version_id")!=expected_version() or
         versions[0].get("percentage")!=100):
         raise RuntimeError("Unexpected current Worker; abort diagnostic")
     resources=call(base+"/versions/"+NEW,token,100000,structured=True)
