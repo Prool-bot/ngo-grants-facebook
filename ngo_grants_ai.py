@@ -114,7 +114,15 @@ KYIV = ZoneInfo("Europe/Kyiv")
 ARCHIVE = Path("archive/telegram")
 STATE_PATH = Path("ai_catalogs/state.json")
 PDF_DIR = Path("ai_catalogs/pdfs")
-CF_MODEL = "@cf/meta/llama-3.1-8b-instruct-fp8"
+# Only Cloudflare-hosted Workers-Free models may be configured here.
+# Cloudflare deprecates our previous Llama on 2026-11-20 (HTTP 410/5028).
+# Gemma 4 was LIVE VERIFIED with TWO synthetic JSON grant prompts on the
+# existing Cloudflare account (GitHub Actions run 43722404299).
+CF_MODEL = "@cf/google/gemma-4-26b-a4b-it"
+CF_FREE_MODEL_ALLOWLIST = frozenset({
+    "@cf/google/gemma-4-26b-a4b-it",
+    "@cf/zai-org/glm-4.7-flash",
+})
 MAX_PER_DAY = 3
 MIN_GAP_HOURS = 2
 # Technical batch sizes only. These do NOT limit the number of grants in a catalog.
@@ -2444,18 +2452,36 @@ def cf_ai(system: str, payload: object, max_tokens: int = 650,
     token = os.environ.get("CF_API_TOKEN", "").strip()
     if not (account and token):
         raise RuntimeError("Cloudflare AI ще не налаштовано")
+    # Fail closed: never silently route the public NGO service to a paid model.
+    # Workers Free itself enforces the 10,000-Neuron daily no-charge allowance.
+    if CF_MODEL not in CF_FREE_MODEL_ALLOWLIST:
+        raise RuntimeError("NGO Grants AI: Workers-Free models only")
     url = f"https://api.cloudflare.com/client/v4/accounts/{urllib.parse.quote(account)}/ai/run/{CF_MODEL}"
     data = {"messages": [{"role": "system", "content": system},
                          {"role": "user", "content": json.dumps(payload, ensure_ascii=False)}],
             "max_tokens": max_tokens, "temperature": 0.0}
-    # Cloudflare AI inference may exceed 35s on a cold start. A longer
-    # single-request read timeout is safer than retrying a potentially
-    # completed POST, which can double-count the limited AI allowance.
+    # The free Gemma 4 model defaults to using completion tokens for thinking.
+    # Disable thinking for short, exact grant JSON; require its native JSON mode.
+    # Both options were validated with the real Cloudflare REST endpoint.
+    if CF_MODEL == "@cf/google/gemma-4-26b-a4b-it":
+        data["chat_template_kwargs"] = {"enable_thinking": False}
+        data["response_format"] = {"type": "json_object"}
+    # One request, no repeated POSTs that could consume free Neurons twice.
     res = http_json(url, data=data, headers={"Authorization": "Bearer " + token}, timeout=60)
-    result = res.get('result') or {}
+    result = res.get("result") or {}
     if not isinstance(result, dict):
-        raise AIResponseFormatError('Cloudflare AI повернув відповідь невідомого формату')
-    return _parse_ai_json(result.get('response'), required_keys=required_keys)
+        raise AIResponseFormatError("Cloudflare AI повернув відповідь невідомого формату")
+    answer = result.get("response")
+    if answer is None:
+        # Current Gemma REST returns OpenAI-style result.choices[0].message.content
+        # rather than legacy Llama's result.response. Never parse reasoning
+        # or concatenate multiple choices; only the final answer is admissible.
+        choices = result.get("choices")
+        if not isinstance(choices, list) or len(choices) != 1:
+            raise AIResponseFormatError("Cloudflare AI: відсутня єдина текстова відповідь")
+        message = choices[0].get("message") if isinstance(choices[0], dict) else None
+        answer = message.get("content") if isinstance(message, dict) else None
+    return _parse_ai_json(answer, required_keys=required_keys)
 
 
 
