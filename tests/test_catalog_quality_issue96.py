@@ -138,7 +138,7 @@ class EligibilityAndTypeTests(unittest.TestCase):
             [row(3623, ASPRS_A, "2026-12-01")], facets, as_of=TODAY)
         self.assertFalse(direct)
         self.assertEqual(1, len(conditional))
-        self.assertIn("не перевірен", conditional[0]["_conditional_reason"])
+        self.assertIn("членство не підтверджене", conditional[0]["_conditional_reason"])
 
     def test_restrictive_naf_degree_and_job_requirements(self):
         facets = {"audience": "individual", "sectors": ["education"]}
