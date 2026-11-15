@@ -1,0 +1,35 @@
+name: NGO Grants — production Workers-Free Gemma 4 release validation
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'ngo_grants_ai.py'
+      - 'scripts/verify_production_gemma_free.py'
+      - '.github/workflows/gemma-free-production-verify.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ngo-grants-ai-free-model-migration
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
+      CF_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - name: Re-run free model regression tests without API calls
+        run: |
+          python -m py_compile ngo_grants_ai.py scripts/verify_production_gemma_free.py
+          python -m unittest discover -s tests -p 'test_gemma4_free_migration.py' -v
+          python -m unittest discover -s tests -p 'test_catalog_precision_guard.py' -v
+      - name: Validate PRODUCTION cf_ai adapter via 2 small synthetic Workers-Free Gemma REST calls
+        run: python -u scripts/verify_production_gemma_free.py
