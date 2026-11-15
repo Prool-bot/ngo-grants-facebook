@@ -1,0 +1,33 @@
+name: NGO Grants — free Gemma 4 model migration preflight (NO orders)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/gemma-free-model-preflight.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ngo-grants-ai-free-model-migration
+  cancel-in-progress: false
+
+jobs:
+  gemma-free-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
+      CF_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Safety and Python syntax checks (NO AI calls)
+        run: |
+          python -m py_compile scripts/gemma_free_model_smoke.py
+          python -m unittest discover -s tests -p 'test_cloudflare_ai_single_timeout.py' -v
+      - name: Test free Gemma 4 through actual Cloudflare account (TWO tiny prompts only)
+        run: python -u scripts/gemma_free_model_smoke.py
