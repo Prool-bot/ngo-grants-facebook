@@ -1,0 +1,51 @@
+name: NGO Grants — release v0.5.3 Telegram membership 503 fix
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/mini-app-v053-telegram-fix.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ngo-grants-worker-production-deploy
+  cancel-in-progress: false
+
+jobs:
+  hotfix:
+    runs-on: ubuntu-latest
+    timeout-minutes: 14
+    env:
+      CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
+      CF_WORKER_ACCOUNT_ID: ${{ secrets.CF_WORKER_ACCOUNT_ID }}
+      CF_WORKER_API_TOKEN: ${{ secrets.CF_WORKER_API_TOKEN }}
+      NGO_BOT_GATEWAY_URL: ${{ secrets.NGO_BOT_GATEWAY_URL }}
+      NGO_GRANTS_AI_BOT_TOKEN: ${{ secrets.NGO_GRANTS_AI_BOT_TOKEN }}
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      NGO_V053_DIAG_RELEASE_APPROVED: 'YES_RELEASE_MINI_APP_V053_TELEGRAM_REDIRECT'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Validate exact fix contract and existing production health
+        run: |
+          python -m py_compile worker/patch_mini_app_v053_telegram_fix.py worker/release_mini_app_v053_telegram_fix.py worker/mini_app_expected_worker_version.py
+          python -m unittest discover -s tests -p 'test_mini_app_v053_telegram_fix.py' -v
+          python scripts/mini_app_v05_health_readonly.py
+      - name: Test actual signed order with real SQLite and safe worker staging, then canary + rollback
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          scratch="$(mktemp -d "${RUNNER_TEMP}/ngo-miniapp-v053.XXXXXX")"
+          trap 'rm -rf "$scratch"' EXIT
+          python worker/read_live_mini_app_v05_diagnosis.py "$scratch/original.mjs"
+          python worker/patch_mini_app_v053_telegram_fix.py "$scratch/original.mjs" "$scratch/fixed.mjs"
+          node --check "$scratch/fixed.mjs"
+          node --disable-warning=ExperimentalWarning tests/probe_mini_app_v05_actual_sqlite_offline.mjs "$scratch/fixed.mjs"
+          python worker/stage_worker_mini_app.py "$scratch/fixed.mjs"
+          python worker/release_mini_app_v053_telegram_fix.py
