@@ -147,6 +147,8 @@ export async function handleMiniAppOrder(request,env,deps={}){
       return json(429,{ok:false,error:"На сьогодні ліміт запитів вичерпано"});
     if(code==="CONFLICT")
       return json(409,{ok:false,error:"Замовлення вже існує"});
-    return json(503,{ok:false,error:"Не вдалося підтвердити замовлення. Спробуйте перевірити стан черги у боті."});
+    const known=["CONFIG","D1_READ","QUEUE_NO_COMMIT","TELEGRAM_UPSTREAM"];
+    return json(503,{ok:false,error:"Не вдалося підтвердити замовлення.",
+      error_code:known.includes(code)?code:"UNKNOWN"});
   }
 }
