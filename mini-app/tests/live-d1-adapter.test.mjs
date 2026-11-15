@@ -24,7 +24,9 @@ function memberFetch(status="member",userId=USER){
     calls.push({url,options});
     assert.match(url,/^https:\/\/api\.telegram\.org\/bot123456789:OFFLINE-only-no-real-Telegram\/getChatMember$/);
     assert.equal(options.method,"POST");
-    assert.equal(options.redirect,"error");
+    // Cloudflare Worker fetch to Telegram throws with redirect:"error".
+    // Default redirect policy was verified with live Bot API HTTP 200.
+    assert.equal(options.redirect,undefined);
     const data=JSON.parse(options.body);
     assert.equal(data.chat_id,"@ngo_grants");
     assert.equal(data.user_id,userId);
