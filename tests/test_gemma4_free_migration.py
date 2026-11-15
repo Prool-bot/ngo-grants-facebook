@@ -32,7 +32,7 @@ class GemmaFreeMigrationTests(TestCase):
   self.assertEqual(opts["data"]["temperature"],0.0)
   self.assertEqual(opts["timeout"],60)
   self.assertEqual(opts["headers"]["Authorization"],"Bearer test-token")
-  self.assertTrue(opts["url"].endswith("/run/"+MODEL))
+  self.assertTrue(sent.call_args.args[0].endswith("/run/"+MODEL))
 
  def test_classification_direct_only_from_json_content(self):
   obj={"success":True,"result":{"choices":[
