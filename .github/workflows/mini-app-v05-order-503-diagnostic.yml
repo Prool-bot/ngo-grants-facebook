@@ -6,6 +6,7 @@ on:
     paths:
       - '.github/workflows/mini-app-v05-order-503-diagnostic.yml'
       - 'tests/probe_mini_app_v05_actual_sqlite_offline.mjs'
+      - 'tests/probe_mini_app_v05_actual_sqlite_offline.mjs'
 
 permissions:
   contents: read
