@@ -5,7 +5,7 @@ conservative; no external AI calls, personal profiles, or publication effects.
 """
 from __future__ import annotations
 
-from datetime import date, datetime, time, timezone
+from datetime import date, datetime, time, timezone, timedelta
 import re
 from zoneinfo import ZoneInfo
 
@@ -121,16 +121,16 @@ def same_day_deadline_expired(post: str, deadline: date | None,
     if as_of_dt.tzinfo is None:
         raise ValueError("as_of_dt must be offset-aware")
     zones = {
-        "EST": timezone.utc if False else ZoneInfo("America/New_York"),
-        "EDT": ZoneInfo("America/New_York"),
+        "EST": timezone(timedelta(hours=-5)),
+        "EDT": timezone(timedelta(hours=-4)),
         "ET": ZoneInfo("America/New_York"),
-        "PST": ZoneInfo("America/Los_Angeles"),
-        "PDT": ZoneInfo("America/Los_Angeles"),
+        "PST": timezone(timedelta(hours=-8)),
+        "PDT": timezone(timedelta(hours=-7)),
         "PT": ZoneInfo("America/Los_Angeles"),
         "UTC": timezone.utc,
         "GMT": timezone.utc,
-        "EET": ZoneInfo("Europe/Kyiv"),
-        "EEST": ZoneInfo("Europe/Kyiv"),
+        "EET": timezone(timedelta(hours=2)),
+        "EEST": timezone(timedelta(hours=3)),
     }
     for line in str(post or "").splitlines():
         if deadline not in _dates(line):
