@@ -1,0 +1,26 @@
+name: NGO Grants — read-only aggregate pending Mini App orders
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/mini-app-queue-pending-audit.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  read:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      NGO_BOT_GATEWAY_URL: ${{ secrets.NGO_BOT_GATEWAY_URL }}
+      NGO_BOT_SYNC_SECRET: ${{ secrets.NGO_BOT_SYNC_SECRET }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - name: Report anonymous counts only; no mutations
+        run: |
+          python -m py_compile scripts/mini_app_pending_aggregate_readonly.py
+          python scripts/mini_app_pending_aggregate_readonly.py
