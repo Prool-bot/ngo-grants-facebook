@@ -1,0 +1,47 @@
+name: NGO Grants Mini App — diagnose direct order 503 without user traffic
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/mini-app-v05-order-503-diagnostic.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ngo-grants-mini-app-v05-health
+  cancel-in-progress: false
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
+      CF_WORKER_ACCOUNT_ID: ${{ secrets.CF_WORKER_ACCOUNT_ID }}
+      CF_WORKER_API_TOKEN: ${{ secrets.CF_WORKER_API_TOKEN }}
+      NGO_BOT_GATEWAY_URL: ${{ secrets.NGO_BOT_GATEWAY_URL }}
+      NGO_GRANTS_AI_BOT_TOKEN: ${{ secrets.NGO_GRANTS_AI_BOT_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Validate diagnostic code and read-only public server contract
+        run: |
+          python -m py_compile worker/read_live_mini_app_v05_diagnosis.py
+          node --check tests/probe_mini_app_v05_real_create_request_offline.mjs
+          python scripts/mini_app_v05_health_readonly.py
+      - name: Diagnose actual Worker + legacy D1 code with fake in-memory DB only
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          scratch="$(mktemp -d "${RUNNER_TEMP}/v05-503-diagnostic.XXXXXX")"
+          trap 'rm -rf "$scratch"' EXIT
+          python worker/read_live_mini_app_v05_diagnosis.py "$scratch/worker.mjs"
+          node --check "$scratch/worker.mjs"
+          node tests/probe_mini_app_v05_real_create_request_offline.mjs "$scratch/worker.mjs"
+          echo 'NO_REAL_ORDER_OR_D1_WRITE_EXECUTED=True'
