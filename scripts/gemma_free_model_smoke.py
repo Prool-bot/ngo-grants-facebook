@@ -26,6 +26,25 @@ def check():
     if CANDIDATE not in FREE_ALLOWLIST:
         raise RuntimeError("A paid or unapproved model was selected")
     app.CF_MODEL=CANDIDATE
+    # Gemma 4 turns reasoning ON by default. With legacy max_tokens it can
+    # exhaust completion budget in thinking before producing JSON. Force a
+    # single deterministic JSON object without spending tokens on thinking.
+    original_http=app.http_json
+    def gemma_http(url, data=None, headers=None, timeout=15):
+        options=dict(data or {})
+        options["chat_template_kwargs"]={"enable_thinking":False}
+        options["response_format"]={"type":"json_object"}
+        answer=original_http(url,data=options,headers=headers,timeout=timeout)
+        result=answer.get("result") or {}
+        if isinstance(result,dict):
+            safe_fields=sorted(str(k) for k in result
+                               if k in ("response","reasoning","usage",
+                                        "choices","output","model","id"))
+            print("FREE_GEMMA_RESULT_FIELDS="+",".join(safe_fields))
+            print("FREE_GEMMA_RESPONSE_TYPE="+
+                  type(result.get("response")).__name__)
+        return answer
+    app.http_json=gemma_http
     print("FREE_GEMMA_SMOKE_START=True")
     # Check existing response schema/JSON decoder and named Ukrainian slots.
     result=app.cf_ai(

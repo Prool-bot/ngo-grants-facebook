@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - '.github/workflows/gemma-free-model-preflight.yml'
+      - 'scripts/gemma_free_model_smoke.py'
 
 permissions:
   contents: read
