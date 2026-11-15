@@ -11,6 +11,8 @@ from __future__ import annotations
 import os
 import sys
 import urllib.error
+from pathlib import Path
+sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 import ngo_grants_ai as app
 
 CANDIDATE="@cf/google/gemma-4-26b-a4b-it"
