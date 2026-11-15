@@ -1,0 +1,25 @@
+name: NGO Grants — recent real-user PDF catalog quality audit (read only)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/catalog-user-quality-audit.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Offline public PDF extraction and QA (NO network or AI)
+        run: |
+          python -m pip install pypdf==5.9.0
+          python -m py_compile scripts/audit_recent_public_catalog_pdfs.py
+          python scripts/audit_recent_public_catalog_pdfs.py
