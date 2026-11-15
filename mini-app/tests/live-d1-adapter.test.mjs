@@ -115,7 +115,7 @@ test("DM failure after D1 transaction still yields real durable receipt",async()
 test("Pre-commit D1 failure is NOT misrepresented as a quota refusal",async()=>{
   const x=setup({commit:false,dmFailure:true});
   await assert.rejects(x.enqueueExistingOrder(input()),
-    e=>e instanceof DirectOrderRefusal&&e.code==="UPSTREAM_UNAVAILABLE");
+    e=>e instanceof DirectOrderRefusal&&e.code==="QUEUE_NO_COMMIT");
   assert.equal(x.DB.rows.size,0);
 });
 test("Existing Worker quota denial without an insert returns daily-limit response",async()=>{
@@ -172,6 +172,6 @@ test("Network failure to Telegram getChatMember does not create an order",async(
     createRequest:async()=>{writes++;}
   });
   await assert.rejects(adapter(input()),
-    e=>e instanceof DirectOrderRefusal&&e.code==="UPSTREAM_UNAVAILABLE");
+    e=>e instanceof DirectOrderRefusal&&e.code==="TELEGRAM_UPSTREAM");
   assert.equal(writes,0);
 });
