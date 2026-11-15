@@ -10,6 +10,9 @@ from datetime import date
 import json
 from pathlib import Path
 import re
+import sys
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from pypdf import PdfReader
 
