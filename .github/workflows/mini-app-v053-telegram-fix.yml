@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - '.github/workflows/mini-app-v053-telegram-fix.yml'
+      - 'tests/test_mini_app_v053_telegram_fix.py'
 
 permissions:
   contents: write
