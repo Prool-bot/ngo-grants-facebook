@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - '.github/workflows/mini-app-v051-d1-status-fix.yml'
+      - 'worker/read_live_mini_app_v05_diagnosis.py'
 
 permissions:
   contents: write
