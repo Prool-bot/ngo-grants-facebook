@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - '.github/workflows/mini-app-d1-live-query.yml'
+      - 'scripts/mini_app_d1_live_schema_readonly.py'
   workflow_dispatch:
 
 permissions:
