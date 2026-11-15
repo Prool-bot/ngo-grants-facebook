@@ -31,7 +31,7 @@ def main():
     if (len(versions)!=1 or versions[0].get("version_id")!=expected_version() or
         versions[0].get("percentage")!=100):
         raise RuntimeError("Unexpected current Worker; abort diagnostic")
-    resources=call(base+"/versions/"+NEW,token,100000,structured=True)
+    resources=call(base+"/versions/"+expected_version(),token,100000,structured=True)
     actual={x.get("name"):x.get("type") for x in
             (resources.get("resources") or {}).get("bindings") or []}
     if actual!=REQUIRED:raise RuntimeError("Worker bindings changed")
