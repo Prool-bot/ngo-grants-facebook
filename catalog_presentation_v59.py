@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from datetime import date
 from catalog_guard_v57 import quality_status
+from catalog_precision_guard import supports_explicit_open_applicants
 
 
 def partition_reviewed_rows(rows: list[dict], facets: dict | None,
@@ -32,6 +33,9 @@ def partition_reviewed_rows(rows: list[dict], facets: dict | None,
         if deadline is None and not row.get("_rolling"):
             continue
         if deadline is not None and deadline < as_of:
+            continue
+        if facets is not None and not supports_explicit_open_applicants(
+                row.get("text") or "", facets.get("detail") or ""):
             continue
         guard = quality_status(row.get("text") or "", facets) if facets is not None else "direct"
         if guard == "reject":
