@@ -10,7 +10,7 @@ import os,re,sys
 from pathlib import Path
 
 MARKER="NGO_MINI_APP_READONLY_D1_AGG_V052"
-ANCHOR="export default {async fetch(request,env){"
+ANCHOR=r"\\bexport\\s+default\\s*\\{\\s*async\\s+fetch\\s*\\(\\s*request\\s*,\\s*env\\s*\\)\\s*\\{"
 ROUTE='''
   // NGO_MINI_APP_READONLY_D1_AGG_V052 (temporary, authorized, count-only)
   if(new URL(request.url).pathname==="/_internal/miniapp/order-count-health"){
@@ -49,7 +49,7 @@ ROUTE='''
 def patch(s:str)->str:
     checks={
       "size_ok":bool(s) and len(s)<8_000_000,
-      "fetch_anchor_count":s.count(ANCHOR),
+      "fetch_anchor_count":len(list(re.finditer(ANCHOR,s))),
       "previous_probe_absent":MARKER not in s,
       "v051_marker_count":s.count("NGO_MINI_APP_V051_D1_READBACK_STATUS_COMPATIBILITY"),
       "enabled_flag_count":s.count("const __ngoMiniAppDirectRouteEnabled=true;"),
@@ -60,7 +60,9 @@ def patch(s:str)->str:
         not checks["previous_probe_absent"] or checks["v051_marker_count"]!=1 or
         checks["enabled_flag_count"]!=1 or not checks["corrected_status_list"]):
         raise RuntimeError("Current live v0.5.1 fingerprint missing, abort")
-    out=s.replace(ANCHOR,ANCHOR+ROUTE,1)
+    m=re.search(ANCHOR,s)
+    if not m:raise RuntimeError("Worker fetch entrypoint missing")
+    out=s[:m.end()]+ROUTE+s[m.end():]
     if out.count(MARKER)!=1:return_error=1
     else:return_error=0
     if return_error:raise RuntimeError("Read-only aggregate probe patch incorrect")
