@@ -13,7 +13,7 @@ MOD=importlib.util.module_from_spec(SP);SP.loader.exec_module(MOD)
 class HealthTests(TestCase):
  def test_only_expected_new_version_is_allowed(self):
   MOD.assess_deployment({"deployments":[{
-    "versions":[{"version_id":MOD.NEW,"percentage":100}]
+    "versions":[{"version_id":MOD.expected_version(),"percentage":100}]
   }]})
   with self.assertRaises(RuntimeError):
    MOD.assess_deployment({"deployments":[{
@@ -21,7 +21,7 @@ class HealthTests(TestCase):
    }]})
   with self.assertRaises(RuntimeError):
    MOD.assess_deployment({"deployments":[{
-     "versions":[{"version_id":MOD.NEW,"percentage":0.01}]
+     "versions":[{"version_id":MOD.expected_version(),"percentage":0.01}]
    }]})
  def test_live_check_is_read_only_and_requires_main_registration(self):
   env={
@@ -31,7 +31,7 @@ class HealthTests(TestCase):
   }
   with patch.dict(os.environ,env,clear=True),\
        patch.object(MOD,"api",return_value={
-          "deployments":[{"versions":[{"version_id":MOD.NEW,"percentage":100}]}]
+          "deployments":[{"versions":[{"version_id":MOD.expected_version(),"percentage":100}]}]
        }) as api,\
        patch.object(MOD,"health",return_value={"menu_version":"5.8"}),\
        patch.object(MOD,"forbidden",return_value=True),\
