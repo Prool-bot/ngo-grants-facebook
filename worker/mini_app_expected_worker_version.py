@@ -13,6 +13,7 @@ ORIGINAL="4b0b8562-d2af-46a5-aa87-8acfb69b2151"
 RECEIPT=Path(__file__).resolve().parents[1]/"launches/mini_app_v051_live_version.json"
 LATEST_RECEIPT=Path(__file__).resolve().parents[1]/"launches/mini_app_v052_live_version.json"
 V053_RECEIPT=Path(__file__).resolve().parents[1]/"launches/mini_app_v053_live_version.json"
+V054_RECEIPT=Path(__file__).resolve().parents[1]/"launches/mini_app_v054_live_version.json"
 
 def expected_version()->str:
     if not RECEIPT.is_file():return ORIGINAL
@@ -39,4 +40,13 @@ def expected_version()->str:
         not isinstance(current,str) or
         not re.fullmatch(r"[a-f0-9-]{36}",current) or current==successor):
         raise RuntimeError("Unexpected v0.5.3 Telegram upstream fix receipt")
-    return current
+    if not V054_RECEIPT.is_file():return current
+    upgrade=json.loads(V054_RECEIPT.read_text("utf-8"))
+    upgraded=upgrade.get("version_id")
+    if (upgrade.get("status")!="deployed_verified" or
+        upgrade.get("previous_version")!=current or
+        upgrade.get("script")!="ngo-grants-instant-bot" or
+        not isinstance(upgraded,str) or
+        not re.fullmatch(r"[a-f0-9-]{36}",upgraded) or upgraded==current):
+        raise RuntimeError("Unexpected v0.5.4 request guidance release receipt")
+    return upgraded
