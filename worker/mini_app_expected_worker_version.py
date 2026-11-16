@@ -14,6 +14,7 @@ RECEIPT=Path(__file__).resolve().parents[1]/"launches/mini_app_v051_live_version
 LATEST_RECEIPT=Path(__file__).resolve().parents[1]/"launches/mini_app_v052_live_version.json"
 V053_RECEIPT=Path(__file__).resolve().parents[1]/"launches/mini_app_v053_live_version.json"
 V054_RECEIPT=Path(__file__).resolve().parents[1]/"launches/mini_app_v054_live_version.json"
+V055_RECEIPT=Path(__file__).resolve().parents[1]/"launches/mini_app_v055_live_version.json"
 
 def expected_version()->str:
     if not RECEIPT.is_file():return ORIGINAL
@@ -49,4 +50,13 @@ def expected_version()->str:
         not isinstance(upgraded,str) or
         not re.fullmatch(r"[a-f0-9-]{36}",upgraded) or upgraded==current):
         raise RuntimeError("Unexpected v0.5.4 request guidance release receipt")
-    return upgraded
+    if not V055_RECEIPT.is_file():return upgraded
+    wave=json.loads(V055_RECEIPT.read_text("utf-8"))
+    waving=wave.get("version_id")
+    if (wave.get("status")!="deployed_verified" or
+        wave.get("previous_version")!=upgraded or
+        wave.get("script")!="ngo-grants-instant-bot" or
+        not isinstance(waving,str) or
+        not re.fullmatch(r"[a-f0-9-]{36}",waving) or waving==upgraded):
+        raise RuntimeError("Unexpected v0.5.5 visible robot wave release receipt")
+    return waving
