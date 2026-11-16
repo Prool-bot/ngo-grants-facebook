@@ -96,12 +96,26 @@ def _specific_official_paths(row: dict) -> set[str]:
             continue
     return keys
 
+def _conflicting_horizon_topic_ids(a: dict, b: dict) -> bool:
+    """Different EU topic IDs can share donor, date and keywords without duplication."""
+    expr = r"\\bHORIZON-[A-Z0-9]+(?:-[A-Z0-9]+){2,}\\b"
+    def ids(row):
+        src = str(row.get("text") or "") + " " + " ".join(
+            str(x) for x in (row.get("canonical_urls") or row.get("urls") or [])
+        )
+        return set(re.findall(expr, src.upper()))
+    left, right = ids(a), ids(b)
+    return bool(left and right and left.isdisjoint(right))
+
+
 def same_grant_round(a: dict, b: dict) -> bool:
     """Source-backed duplicate detection with a strict equal round deadline.
 
     Exact programme-specific official URL OR distinctive named programme in
     both descriptions. Never dedupe on donor host/year or generic subject alone.
     """
+    if _conflicting_horizon_topic_ids(a, b):
+        return False
     deadline = a.get("_deadline")
     if not deadline or deadline != b.get("_deadline"):
         return False
@@ -194,7 +208,7 @@ def _same_branded_round(a: dict, b: dict) -> bool:
     # A generic donor surname such as Parkinson cannot satisfy this.
     return any(
         len(parts) == 1 and
-        all(re.search(r"\b[a-z]{3,}[A-Z][A-Za-z]{2,}\b", str(row.get("text") or ""))
+        all(re.search(r"\b[A-Z][a-z]{2,}[A-Z][A-Za-z]{2,}\b", str(row.get("text") or ""))
             for row in (a, b))
         for parts in both
     )
