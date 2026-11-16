@@ -36,7 +36,8 @@ class V054Tests(TestCase):
     def test_surgical_embedded_html_only_and_version_fallback(self):
         template=direct_html(ROOT/"mini-app/direct-preview.html")
         self.assertIn('data-direct-send="true"',template)
-        self.assertIn('id="greet"',template)
+        self.assertIn('id="robotFigure"',template)
+        self.assertNotIn('id="greet"',template)
         self.assertIn('id="robotArm"',template)
         src=original()
         result=patch(src,old_live_html=OLD,new_html=template)
@@ -72,14 +73,15 @@ class V054Tests(TestCase):
         restored=patch(staged,old_live_html=OLD,new_html=template)
         self.assertEqual(restored,clean)
         self.assertNotIn("NGO_MINIAPP_V052_STAGE_ONLY_AUTH_DRYRUN",restored)
-    def test_gesture_not_full_body_jump_and_semantic_form_gates(self):
+    def test_each_action_hops_and_waves_and_semantic_form_gates(self):
         js=(ROOT/"mini-app/app.js").read_text("utf8")
         css=(ROOT/"mini-app/styles.css").read_text("utf8")
         self.assertIn("function needsDetail()",js)
-        self.assertIn("greetButton.addEventListener('click'",js)
+        self.assertIn("robotFigure.classList.add('hop')",js)
         self.assertIn("robotArm.classList.add('wave')",js)
         self.assertIn("@keyframes arm-wave",css)
-        self.assertNotIn("translateY(-4px)",css)
+        self.assertIn("@keyframes robot-hop",css)
+        self.assertIn("translateY(-11px)",css)
 
     def test_versioned_cloudflare_read_uses_only_approved_active_module(self):
         version="12345678-1234-1234-1234-1234567890ab"
