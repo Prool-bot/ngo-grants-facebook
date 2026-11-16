@@ -5,9 +5,9 @@ on:
     branches: [main]
     paths:
       - '.github/workflows/mini-app-v055-wave-rollout.yml'
-      - 'worker/patch_mini_app_v055_ui.py'
+      - 'worker/patch_mini_app_v054_ui.py'
       - 'worker/read_live_mini_app_v05_diagnosis.py'
-      - 'tests/test_mini_app_v055_ui.py'
+      - 'tests/test_mini_app_greeting_precision.py'
       - 'worker/release_mini_app_v055_wave.py'
       - 'mini-app/direct-preview.html'
       - 'mini-app/app.js'
@@ -16,7 +16,7 @@ on:
   workflow_dispatch:
   pull_request:
     paths:
-      - 'worker/patch_mini_app_v055_ui.py'
+      - 'worker/patch_mini_app_v054_ui.py'
       - 'worker/release_mini_app_v055_wave.py'
       - 'worker/mini_app_expected_worker_version.py'
       - 'worker/read_live_mini_app_v05_diagnosis.py'
@@ -47,7 +47,7 @@ jobs:
         with: {node-version: '22'}
       - name: Validate exact Worker patch and existing Mini App client without secrets
         run: |
-          python -m py_compile worker/read_live_mini_app_v05_diagnosis.py worker/patch_mini_app_v055_ui.py worker/release_mini_app_v055_wave.py worker/mini_app_expected_worker_version.py
+          python -m py_compile worker/read_live_mini_app_v05_diagnosis.py worker/patch_mini_app_v054_ui.py worker/release_mini_app_v055_wave.py worker/mini_app_expected_worker_version.py
           python -m unittest discover -s tests -p 'test_mini_app_v054_ui.py' -v
           python -m unittest discover -s tests -p 'test_mini_app_greeting_precision.py' -v
           node --test mini-app/tests/*.test.cjs mini-app/tests/*.test.mjs
@@ -83,7 +83,7 @@ jobs:
           scratch="$(mktemp -d "${RUNNER_TEMP}/ngo-miniapp-v055.XXXXXX")"
           trap 'rm -rf "$scratch"' EXIT
           python worker/read_live_mini_app_v05_diagnosis.py "$scratch/worker-before.mjs"
-          python worker/patch_mini_app_v055_ui.py "$scratch/worker-before.mjs" "$scratch/worker-after.mjs"
+          python worker/patch_mini_app_v054_ui.py "$scratch/worker-before.mjs" "$scratch/worker-after.mjs"
           node --check "$scratch/worker-after.mjs"
           python worker/stage_worker_mini_app.py "$scratch/worker-after.mjs"
           python worker/release_mini_app_v055_wave.py
