@@ -9,11 +9,17 @@ class RobotAndFormTests(unittest.TestCase):
     def test_greeting_only_triggers_arm_wave(self):
         js = (ROOT / "mini-app/app.js").read_text("utf-8")
         css = (ROOT / "mini-app/styles.css").read_text("utf-8")
-        self.assertIn("if(kind!=='wave'||!robotArm||reduced.matches)return;", js)
+        self.assertIn("if(!robotArm)return;", js)
+        self.assertIn("if(kind==='ack'){", js)
+        self.assertIn("if(greetedDuringForm)return;", js)
+        self.assertIn("greetedDuringForm=true;", js)
+        self.assertNotIn("reduced.matches", js)
         self.assertIn("()=>trigger('wave')", js)
         self.assertNotIn("robot.classList.add('react')", js)
         self.assertNotIn(".robot.react{animation:", css)
         self.assertIn(".robot-arm.wave{opacity:1;animation:arm-wave", css)
+        self.assertIn("transform:rotate(53deg)", css)
+        self.assertIn(".robot-arm.wave{animation:arm-wave .55s", css)
 
     def test_broad_selections_require_a_concrete_request(self):
         js = (ROOT / "mini-app/app.js").read_text("utf-8")
