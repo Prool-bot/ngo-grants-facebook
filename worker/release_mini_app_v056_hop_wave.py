@@ -62,7 +62,7 @@ def check_new_html(gateway: str, version: str | None = None):
             'telegram-web-app.js'
         )) or
         'id="greet"' in text):
-        raise RuntimeError("Candidate UI is not the guided form with arm-only wave")
+        raise RuntimeError("Candidate UI must hop and wave on each choice with no greeting button")
     print("V056_EVERY_CHOICE_HOP_AND_WAVE_VERIFIED=True")
 
 
@@ -140,7 +140,7 @@ def main():
         check_new_html(origin,new)
         print("V056_CANARY_PASS_WITH_NO_USER_ORDERS=True")
         deploy([(new,100)],
-               "Mini App v0.5.6 first-answer visible arm wave + manual greeting")
+               "Mini App v0.5.6 per-choice hop and wave without greeting button")
         time.sleep(3)
         if (get_active_version()!=new or
             health(origin).get("menu_version")!="5.8" or
