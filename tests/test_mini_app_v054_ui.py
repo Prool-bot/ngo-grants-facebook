@@ -8,6 +8,7 @@ ROOT=Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(ROOT/"worker"))
 from patch_live_worker_mini_app_direct_v05 import direct_html
 from patch_mini_app_v054_ui import patch
+from patch_mini_app_real_session_dryrun import ROUTE as VERIFIED_DRYRUN_ROUTE
 from mini_app_expected_worker_version import expected_version
 
 MARKERS=(
@@ -57,6 +58,18 @@ class V054Tests(TestCase):
             with self.subTest(marker=marker),self.assertRaises(RuntimeError):
                 patch(original().replace(marker,"DELETED",1),
                       old_live_html=OLD,new_html=template)
+
+    def test_known_staged_dryrun_route_is_exactly_removed_before_patch(self):
+        template=direct_html(ROOT/"mini-app/direct-preview.html")
+        clean=patch(original(),old_live_html=OLD,new_html=template)
+        # Cloudflare may return latest staged script, not live version.
+        # That staging route is exactly the known authored probe.
+        staged=original().replace(
+            "export default {async fetch(request,env){",
+            "export default {async fetch(request,env){"+VERIFIED_DRYRUN_ROUTE)
+        restored=patch(staged,old_live_html=OLD,new_html=template)
+        self.assertEqual(restored,clean)
+        self.assertNotIn("NGO_MINIAPP_V052_STAGE_ONLY_AUTH_DRYRUN",restored)
     def test_gesture_not_full_body_jump_and_semantic_form_gates(self):
         js=(ROOT/"mini-app/app.js").read_text("utf8")
         css=(ROOT/"mini-app/styles.css").read_text("utf8")
