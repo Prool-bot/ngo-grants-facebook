@@ -11,7 +11,7 @@ from ngo_grants_ai import read_archive
 
 class PostPublishAcceptanceTests(unittest.TestCase):
     def test_baseline_message_number_and_url_scope(self):
-        self.assertEqual(3935, BASELINE_LAST_POST)
+        self.assertEqual(3940, BASELINE_LAST_POST)
         self.assertEqual([3934, 3935], public_message_ids({
             "channel_urls": [
                 "https://t.me/ngo_grants/3934",
