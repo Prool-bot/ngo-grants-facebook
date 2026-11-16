@@ -109,7 +109,7 @@ def first_mandatory_stage_deadline(post: str) -> date | None:
         # An unqualified LOI deadline by itself is not necessarily mandatory:
         # invitation-only progression is explicit evidence of a hard gateway.
         if re.search(r"\bloi\b|letter\s+of\s+intent|попередн\w*|pre[- ]?proposal", line, re.I):
-            if not invitation and not re.search(r"обов.язков|required|mandatory", snippet, re.I):
+            if not invitation and not is_stage_bullet and not re.search(r"обов.язков|required|mandatory", snippet, re.I):
                 continue
         candidates.append(min(stage_dates))
     return min(candidates) if candidates else None
@@ -156,7 +156,8 @@ def same_day_deadline_expired(post: str, deadline: date | None,
             continue
         # A time printed on a following "ЧАС" line still belongs to the
         # exact deadline above. Do not search unrelated time mentions.
-        context = " ".join(lines[idx:idx+2])
+        # Include up to two spacing/heading lines before an adjacent clock label.
+        context = " ".join(lines[idx:idx+4])
         match = re.search(
             r"(?<!\d)([01]?\d|2[0-3]):([0-5]\d).{0,75}?"
             r"\b(EST|EDT|ET|PST|PDT|PT|UTC|GMT|EEST|EET|CET|CEST)\b",
