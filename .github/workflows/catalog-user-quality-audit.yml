@@ -36,5 +36,5 @@ jobs:
           python -m pip install pypdf==5.9.0
           python -m py_compile scripts/audit_recent_public_catalog_pdfs.py
           python scripts/audit_recent_public_catalog_pdfs.py
-      - name: Post-fix user catalogs acceptance check (no replay, baseline #3935)
+      - name: Post-fix user catalogs acceptance check (no replay, baseline #3940)
         run: python scripts/check_new_catalog_quality.py
