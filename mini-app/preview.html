@@ -25,11 +25,9 @@ button:focus-visible,input:focus-visible,textarea:focus-visible{outline:3px soli
 .robot-figure{display:block;position:relative;width:min(100%,145px);aspect-ratio:1;flex-shrink:1;min-height:0}
 .robot,.robot-arm{height:100%;width:100%;object-fit:contain;display:block}
 .robot{transform-origin:50% 65%}
-.robot.react{animation:ack .38s ease-in-out 1}
-.robot-arm{position:absolute;inset:0;pointer-events:none;opacity:0;clip-path:polygon(16% 41%,43% 41%,43% 71%,16% 71%);transform-origin:31% 53%}
-.robot-arm.wave{opacity:1;animation:arm-wave .9s ease-in-out 1}
-.robot-greet{font-size:11px;font-weight:700;color:#3167a7;background:#f4f8fe;border:1px solid #dce6f3;border-radius:30px;padding:2px 10px;line-height:1.35;margin-top:-5px}
-.robot-greet:hover{background:#e9f3ff}
+.robot-figure.hop{animation:robot-hop .62s ease-out 1}
+.robot-arm{position:absolute;inset:0;pointer-events:none;opacity:0;clip-path:polygon(18% 49%,39% 49%,42% 58%,39% 69%,16% 69%,15% 57%);transform-origin:38% 49%;will-change:transform;z-index:2}
+.robot-arm.wave{opacity:1;animation:arm-wave 1.3s ease-in-out 1}
 .speech{min-width:0}
 .step{font-size:12px;font-weight:750;color:#3167a7}
 h1{font-size:clamp(20px,3.3vw,27px);line-height:1.2;margin:7px 0;letter-spacing:-.55px}
@@ -59,11 +57,11 @@ button:disabled{opacity:.48;cursor:not-allowed}
 .summary dd{margin:0;font-weight:650;overflow-wrap:anywhere}
 .summary .notice{margin:15px 0 0;padding:12px;background:#fff6e4;border:1px solid #f1d8a4;border-radius:9px;color:#745016;font-size:13px}
 .disclaimer{font-size:12px;color:#637b93;line-height:1.45;margin:20px 0 0}
-@keyframes ack{0%,100%{transform:rotate(0)}50%{transform:rotate(-1deg)}}
-@keyframes arm-wave{0%,100%{transform:rotate(0)}25%{transform:rotate(24deg)}50%{transform:rotate(-18deg)}75%{transform:rotate(18deg)}}
+@keyframes arm-wave{0%,100%{transform:rotate(0deg)}15%,49%,83%{transform:rotate(53deg)}30%,64%,94%{transform:rotate(8deg)}}
 @media(min-width:740px){body{padding:30px 15px}.shell{border:1px solid #dce8f6;border-radius:24px;padding:0 30px 22px;box-shadow:0 10px 45px #122d5110}.intro{grid-template-columns:185px 1fr}.robot-box{height:185px}}
 @media(max-width:380px){.shell{padding:0 12px 18px}.intro{gap:8px;grid-template-columns:110px 1fr}.robot-box{height:138px}.brand{font-size:16px}.summary .row{grid-template-columns:102px 1fr}}
-@media(prefers-reduced-motion:reduce){.robot.react,.robot-arm.wave{animation:none}.progress-bar>div{transition:none}}
+@keyframes robot-hop{0%,100%{transform:translateY(0)}39%{transform:translateY(-11px)}69%{transform:translateY(0)}82%{transform:translateY(-3px)}}
+@media(prefers-reduced-motion:reduce){.robot-figure.hop{animation:robot-hop .38s ease-out 1}.robot-arm.wave{animation:arm-wave .55s ease-out 1;opacity:1}.progress-bar>div{transition:none}}
 
 </style>
 </head>
@@ -76,11 +74,10 @@ button:disabled{opacity:.48;cursor:not-allowed}
   <div class="progress-bar" role="progressbar" aria-label="Прогрес анкети" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="progress"><div id="progressFill"></div></div>
   <section class="intro" aria-label="Запитання помічника">
     <div class="robot-box">
-      <span class="robot-figure">
+      <span class="robot-figure" id="robotFigure">
         <img id="robot" class="robot" src="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22200%22%20height%3D%22200%22%20viewBox%3D%220%200%20200%20200%22%3E%3Cimage%20width%3D%22200%22%20height%3D%22200%22%20href%3D%22data%3Aimage%2Fwebp%3Bbase64%2CUklGRp4GAABXRUJQVlA4IJIGAAAwLgCdASrIAMgAPvV2s1QqpyUkI9QKgVAeiWVu4W3A11wLpSOFDd3B3mA83zo%2F%2BqG3m5gU6YxqAdoP9yjTxQ8S56jmFVHjenxfe3RbILH7tYQnNVZUbArwBHmxSLNf8d2hU%2B6JKC62wAhRa0K1NjRUUWhroEP%2BKHGXD%2FhgDOHO%2F48E7Bj9Sk4TUySsMknvP0XL2tZDG2gSTQ05k50IH61cXhUpCCWo1M30hJ1OkHscZIuYfyp0o2oM7IbBS667Wh8%2B4UDGgGkz4AYSPv7DdMN6GfRksd6mpAQmqTqu9wO6qY4v4P9VJUxmNUKUKuxxBI2Dq%2FkPQs6c3uwoxtvGiKU9%2BWwIRoJxxCSpkDWCuLZFsjzXCJsi8zY8e8UOsrqV9OYvCxQm7AN44EI5Ps4EJ0aeKEWF6v220FyKKcuZoFJV%2FVhTQtcL4dQc6zPcHP2fbVN%2FWVrAWN7dzsFp2kM5h%2F7lGT2RlTt1FN8rCbPKlxy8iXUHPLoocRbgTAAA%2FvxkgAAIXLU7AI4vislVkohgOAJpJIneqpWRX57ZVGl%2FVS2eVHFqbdAYhdvy2yl%2BR1%2B%2FkGpq3EofTT8kmlcxAar%2Fo3dCoVpEYrGVimj101LfQAyx3aCt5HsfrdorIvJbS0%2Fh8RvXx7ACnXXJkFzTpuH8GGgjpO%2FZ8qa89WLiHl4I5qaQhBKzOwJy0RUHj2Di5bMSo0cF8Cs4yL5eKdm3YC2A%2BAkJiQUmjMg1V3TCEz%2Bkm8BKWqSVnONp7qhznJtc%2FNEsQJ7gnoWkUKUDF3kH0zs68ivm%2Fl59aBlu01jkAfgT15qQHv0WJw%2Fe2RfjFglos1pKWjlHilAhkd89zMHzwAp8ULIueOwxTw0sL5cMDN9OfXyF5dWpt5rsavctnuIjSDJv5lz3Ib5tVglCLCl8%2BwHiBqbOjB0XYfFfviruu%2FCu0zfkKSsgizrehhhGqWXRcGq%2FMJPu2whC5xXmTf1Uy4VEuE%2Ff4e339btj7oFF3bXprhH%2BWAlZAhnraGIFmqp9%2FgmTJqw52GmTFDhe9BIuQkR6%2BfY1OGZmsjGlDjuaWViH2PYSIwXYQgeplGsFQgWINy7jbWLB0ih7etI2dPg8wEp85OYTB1zPoWZBb9Lx88z5es0YjwqLfkkB0Ybimn2YagARIG9RZjsVN15UBJNaQnfVcjeaqnz0tsbFGmUYYF12nEhdsDxfPr9R5nriGjsv2oIu9ylmgMi2JKLAzAoi%2Bjjrh4jWDX0OWs8FowObxFJa2MpGCmBXAM2DfRclf6T03YBATq66CR%2BONpMfJFJIam79gdRUeqilg%2FaEuAzF%2FuSP3aGpE6fJSm49FG1yPAQ%2B6GuO1GBjNbwFqdq0P3y4yAubqY6wj9TWX83NJiZCumc2YV4TZV2rxkuXiFkmIWUXD80PnzEX2TBvxN7lH0UaBB6TWNP6asxagRubLRXpS%2B3nJTqGNPtSxkyIdXrhrMA3BwtrZX1eA5mwUFyZUWScp9WO6YTDwFTmkaO7htaktcArnBtdZA7IZ8Rm8X%2Bi9CyiQIv3fDNiNMXXGxHjdoXkbqTEuYcHcatFcy%2BqtCW%2FwAAiwP84TGolPCt1HJSNoJB7x8H0eZy0PCQzLVWySMBB5jKNhG1fWY5lpXsorSuYfhG9T7OYximzkgR4chT1dLEMhAftSM%2FUpsnae8lGvAkVct%2FWkIEs2vsxj0KCADPN%2FZ0bDfkMGYrl1am6nalHft4bfKvFrIekxraYfxA0a%2FZZRGPRXj2dkrj4ofMK7vh8BXF7QpikJC8mA67l%2BqsoNLeWXW9HLvjz6nEqEGJEXAkk4FyY3H2s%2BY0cbs6%2FhdVW%2B7Xih6xGXsVUJaNj86rJa37Oed9vgAfxHCP40hwldaq5uO64KZQ4NaMUzR33n9wbXlo3dP7IMSBK8pgmwXhmslgOCuYIpLJcNjz9I93SLstIzwDZm%2FrtjVvyYxf3bZ%2Fyb3hj46JACQu8tv2DzHqFAl7iSoez%2BbehDv8tZoxaKiaKXt07J2YaW5uxSBxgQzGP%2BLOtG1Jh6DDnt21hFJeU3FnLsSCWg%2BlWDMnG0zPVRJSktJdLb5Bmjr3X1G8dYQOMVZ0KHskC9BDERGRy4Tpg0gWl85eR34Ayt%2FLPJS%2FJM1vTvenVhvwl6lC8Dt%2FIbOCei5YP%2FDLbywxW8lqL5DWhU9GCaz9vfzmlcH5ldzIThShzNLTpRyNW9R3aFQss3PaCvJ6sulPtQ0S6Me3GSjvqmkB13FfDM4QAAA%3D%3D%22%2F%3E%3C%2Fsvg%3E" alt="Білий робот NGO Grants AI з усмішкою" width="200" height="200">
         <img id="robotArm" class="robot-arm" src="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22200%22%20height%3D%22200%22%20viewBox%3D%220%200%20200%20200%22%3E%3Cimage%20width%3D%22200%22%20height%3D%22200%22%20href%3D%22data%3Aimage%2Fwebp%3Bbase64%2CUklGRp4GAABXRUJQVlA4IJIGAAAwLgCdASrIAMgAPvV2s1QqpyUkI9QKgVAeiWVu4W3A11wLpSOFDd3B3mA83zo%2F%2BqG3m5gU6YxqAdoP9yjTxQ8S56jmFVHjenxfe3RbILH7tYQnNVZUbArwBHmxSLNf8d2hU%2B6JKC62wAhRa0K1NjRUUWhroEP%2BKHGXD%2FhgDOHO%2F48E7Bj9Sk4TUySsMknvP0XL2tZDG2gSTQ05k50IH61cXhUpCCWo1M30hJ1OkHscZIuYfyp0o2oM7IbBS667Wh8%2B4UDGgGkz4AYSPv7DdMN6GfRksd6mpAQmqTqu9wO6qY4v4P9VJUxmNUKUKuxxBI2Dq%2FkPQs6c3uwoxtvGiKU9%2BWwIRoJxxCSpkDWCuLZFsjzXCJsi8zY8e8UOsrqV9OYvCxQm7AN44EI5Ps4EJ0aeKEWF6v220FyKKcuZoFJV%2FVhTQtcL4dQc6zPcHP2fbVN%2FWVrAWN7dzsFp2kM5h%2F7lGT2RlTt1FN8rCbPKlxy8iXUHPLoocRbgTAAA%2FvxkgAAIXLU7AI4vislVkohgOAJpJIneqpWRX57ZVGl%2FVS2eVHFqbdAYhdvy2yl%2BR1%2B%2FkGpq3EofTT8kmlcxAar%2Fo3dCoVpEYrGVimj101LfQAyx3aCt5HsfrdorIvJbS0%2Fh8RvXx7ACnXXJkFzTpuH8GGgjpO%2FZ8qa89WLiHl4I5qaQhBKzOwJy0RUHj2Di5bMSo0cF8Cs4yL5eKdm3YC2A%2BAkJiQUmjMg1V3TCEz%2Bkm8BKWqSVnONp7qhznJtc%2FNEsQJ7gnoWkUKUDF3kH0zs68ivm%2Fl59aBlu01jkAfgT15qQHv0WJw%2Fe2RfjFglos1pKWjlHilAhkd89zMHzwAp8ULIueOwxTw0sL5cMDN9OfXyF5dWpt5rsavctnuIjSDJv5lz3Ib5tVglCLCl8%2BwHiBqbOjB0XYfFfviruu%2FCu0zfkKSsgizrehhhGqWXRcGq%2FMJPu2whC5xXmTf1Uy4VEuE%2Ff4e339btj7oFF3bXprhH%2BWAlZAhnraGIFmqp9%2FgmTJqw52GmTFDhe9BIuQkR6%2BfY1OGZmsjGlDjuaWViH2PYSIwXYQgeplGsFQgWINy7jbWLB0ih7etI2dPg8wEp85OYTB1zPoWZBb9Lx88z5es0YjwqLfkkB0Ybimn2YagARIG9RZjsVN15UBJNaQnfVcjeaqnz0tsbFGmUYYF12nEhdsDxfPr9R5nriGjsv2oIu9ylmgMi2JKLAzAoi%2Bjjrh4jWDX0OWs8FowObxFJa2MpGCmBXAM2DfRclf6T03YBATq66CR%2BONpMfJFJIam79gdRUeqilg%2FaEuAzF%2FuSP3aGpE6fJSm49FG1yPAQ%2B6GuO1GBjNbwFqdq0P3y4yAubqY6wj9TWX83NJiZCumc2YV4TZV2rxkuXiFkmIWUXD80PnzEX2TBvxN7lH0UaBB6TWNP6asxagRubLRXpS%2B3nJTqGNPtSxkyIdXrhrMA3BwtrZX1eA5mwUFyZUWScp9WO6YTDwFTmkaO7htaktcArnBtdZA7IZ8Rm8X%2Bi9CyiQIv3fDNiNMXXGxHjdoXkbqTEuYcHcatFcy%2BqtCW%2FwAAiwP84TGolPCt1HJSNoJB7x8H0eZy0PCQzLVWySMBB5jKNhG1fWY5lpXsorSuYfhG9T7OYximzkgR4chT1dLEMhAftSM%2FUpsnae8lGvAkVct%2FWkIEs2vsxj0KCADPN%2FZ0bDfkMGYrl1am6nalHft4bfKvFrIekxraYfxA0a%2FZZRGPRXj2dkrj4ofMK7vh8BXF7QpikJC8mA67l%2BqsoNLeWXW9HLvjz6nEqEGJEXAkk4FyY3H2s%2BY0cbs6%2FhdVW%2B7Xih6xGXsVUJaNj86rJa37Oed9vgAfxHCP40hwldaq5uO64KZQ4NaMUzR33n9wbXlo3dP7IMSBK8pgmwXhmslgOCuYIpLJcNjz9I93SLstIzwDZm%2FrtjVvyYxf3bZ%2Fyb3hj46JACQu8tv2DzHqFAl7iSoez%2BbehDv8tZoxaKiaKXt07J2YaW5uxSBxgQzGP%2BLOtG1Jh6DDnt21hFJeU3FnLsSCWg%2BlWDMnG0zPVRJSktJdLb5Bmjr3X1G8dYQOMVZ0KHskC9BDERGRy4Tpg0gWl85eR34Ayt%2FLPJS%2FJM1vTvenVhvwl6lC8Dt%2FIbOCei5YP%2FDLbywxW8lqL5DWhU9GCaz9vfzmlcH5ldzIThShzNLTpRyNW9R3aFQss3PaCvJ6sulPtQ0S6Me3GSjvqmkB13FfDM4QAAA%3D%3D%22%2F%3E%3C%2Fsvg%3E" alt="" aria-hidden="true" width="200" height="200">
       </span>
-      <button type="button" class="robot-greet" id="greet" aria-label="Попросити робота помахати рукою">👋 Привіт</button>
     </div>
     <div class="speech">
       <span class="step" id="stepLabel">Крок 1 з 7</span>
@@ -197,7 +194,7 @@ const schema=window.NgoGrantsSchema;
 if(!schema){document.getElementById('error').textContent='Не вдалося завантажити анкету.';return;}
 const el=id=>document.getElementById(id);
 const choices=el('choices'),extra=el('extra'),input=el('extraInput');
-const robot=el('robot'),robotArm=el('robotArm'),reduced=window.matchMedia('(prefers-reduced-motion: reduce)');
+const robotFigure=el('robotFigure'),robotArm=el('robotArm');
 const draft={audience:'',sectors:[],geo:'',region:'',detail:'',
  custom_sector:'',applicant_role:'lead',funding_format:'any'};
 let index=0;
@@ -253,21 +250,18 @@ function all(){return visible().length;}
 function page(){return visible()[index]||null;}
 function resetNode(n){n.replaceChildren();}
 function trigger(kind='ack'){
+ if(kind!=='ack'||!robotFigure||!robotArm)return;
  if(reactionTimeout!==null)clearTimeout(reactionTimeout);
- robot.classList.remove('react');
- if(robotArm)robotArm.classList.remove('wave');
- if(reduced.matches)return;
- if(kind==='wave'&&robotArm){
-   void robotArm.offsetWidth;
-   robotArm.classList.add('wave');
- }else{
-   void robot.offsetWidth;
-   robot.classList.add('react');
- }
+ robotFigure.classList.remove('hop');
+ robotArm.classList.remove('wave');
+ void robotFigure.offsetWidth;
+ robotFigure.classList.add('hop');
+ robotArm.classList.add('wave');
  reactionTimeout=setTimeout(()=>{
-   robot.classList.remove('react');
-   if(robotArm)robotArm.classList.remove('wave');
- },1000);
+   robotFigure.classList.remove('hop');
+   robotArm.classList.remove('wave');
+   reactionTimeout=null;
+ },1420);
 }
 function needsDetail(){
  return (draft.audience==='all'&&draft.sectors.includes('all')) ||
@@ -482,8 +476,6 @@ el('reset').addEventListener('click',()=>{
    custom_sector:'',applicant_role:'lead',funding_format:'any'});
  index=0;render();trigger('ack');
 });
-const greetButton=el('greet');
-if(greetButton)greetButton.addEventListener('click',()=>trigger('wave'));
 if(window.Telegram&&window.Telegram.WebApp){
  try{window.Telegram.WebApp.ready();window.Telegram.WebApp.expand();}catch(_){}
 }
