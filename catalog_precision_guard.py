@@ -187,7 +187,17 @@ def _same_branded_round(a: dict, b: dict) -> bool:
             if value >= 1000:
                 out.add((match.group(1), value))
         return out
-    return bool(amounts(a.get("text") or "") & amounts(b.get("text") or ""))
+    if amounts(a.get("text") or "") & amounts(b.get("text") or ""):
+        return True
+    # Rare CamelCase brand written identically in both posts is strong
+    # call identity even when one repost omits the grant amount (WoodStock).
+    # A generic donor surname such as Parkinson cannot satisfy this.
+    return any(
+        len(parts) == 1 and
+        all(re.search(r"\b[a-z]{3,}[A-Z][A-Za-z]{2,}\b", str(row.get("text") or ""))
+            for row in (a, b))
+        for parts in both
+    )
 
 
 def _detail_modalities(detail: str) -> set[str]:
