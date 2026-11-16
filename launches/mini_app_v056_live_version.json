@@ -1,0 +1,9 @@
+{
+  "status": "deployed_verified",
+  "script": "ngo-grants-instant-bot",
+  "version_id": "3ab73fb0-37d1-4d1a-91f1-6d7653d1a024",
+  "previous_version": "04c93fa4-7407-4c73-9210-e6598e845fb4",
+  "scope": "every form choice hops robot and waves arm; greeting button removed; no API or D1 changes",
+  "verified_at": "2026-11-16T09:30:09.227457+00:00",
+  "run_id": "43840190634"
+}
