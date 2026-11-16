@@ -94,17 +94,33 @@ def main():
         raise RuntimeError("Approved production Worker gateway missing")
     old=expected_version()
     new=staged()
-    if new==old or get_active_version()!=old:
+    print("V054_PRECHECK_STAGING_MANIFEST_OK=True")
+    current=get_active_version()
+    print("V054_PRECHECK_CURRENT_DEPLOYMENT_READ=True")
+    if new==old or current!=old:
         raise RuntimeError("Current active Worker version differs from approved baseline")
-    resource=api("/workers/scripts/"+SCRIPT+"/versions/"+new)
+    # Immediately uploaded versions can take a moment to be visible to the
+    # separate Cloudflare versions-metadata route. Bounded retry only here:
+    # no code re-upload, no paid AI, no request or D1 write.
+    resource=None
+    for attempt in range(4):
+        try:
+            resource=api("/workers/scripts/"+SCRIPT+"/versions/"+new)
+            break
+        except RuntimeError as exc:
+            if "HTTP 404" not in str(exc) or attempt==3:raise
+            time.sleep(2)
+    print("V054_PRECHECK_CANDIDATE_METADATA_READ=True")
     observed={item.get("name"):item.get("type")
               for item in (resource.get("resources") or {}).get("bindings") or []}
     if observed!=EXPECTED:
         raise RuntimeError("Staged Worker D1 / secret / AI bindings changed")
+    print("V054_PRECHECK_BINDINGS_OK=True")
     if health(origin).get("menu_version")!="5.8" or not forbidden(origin):
         raise RuntimeError("Production health or unauthenticated route failed")
     inspect(origin)
     mini_app_smoke(origin)
+    print("V054_PRECHECK_LIVE_BOT_AUTH_AND_UI_OK=True")
     if github_api("GET","contents/"+RECEIPT+"?ref=main")[0]!=404:
         raise RuntimeError("UI release receipt already exists")
     switched=False
