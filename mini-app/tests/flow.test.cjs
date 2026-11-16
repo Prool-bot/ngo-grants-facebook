@@ -188,3 +188,22 @@ test('robot arm waves on explicit hello while robot itself never bounces',()=>{
  assert.equal(app.nodes.robotArm.classList.contains('wave'),true);
  assert.equal(app.nodes.robot.classList.contains('wave'),false);
 });
+
+test('first form choice produces one real hand wave even with reduced motion; hello repeats it',()=>{
+ const app=start(); // mock prefers-reduced-motion = true
+ let armWaves=0;
+ const originalAdd=app.nodes.robotArm.classList.add;
+ app.nodes.robotArm.classList.add=(...names)=>{
+   if(names.includes('wave'))armWaves++;
+   return originalAdd(...names);
+ };
+ assert.equal(armWaves,0);
+ app.option('Громадська організація / благодійний фонд');
+ assert.equal(armWaves,1,'first answer must visibly start wave');
+ assert.equal(app.nodes.robotArm.classList.contains('wave'),true);
+ app.option('Соціальна та гуманітарна сфера');
+ assert.equal(armWaves,1,'normal navigation must not wave continuously');
+ app.nodes.greet.click();
+ assert.equal(armWaves,2,'explicit hello replays wave');
+ assert.equal(app.nodes.robot.classList.contains('wave'),false,'body stays still');
+});
