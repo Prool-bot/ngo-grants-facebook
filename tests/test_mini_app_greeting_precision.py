@@ -21,6 +21,15 @@ class RobotAndFormTests(unittest.TestCase):
         self.assertIn("transform:rotate(53deg)", css)
         self.assertIn(".robot-arm.wave{animation:arm-wave .55s", css)
 
+    def test_embedded_telegram_html_has_the_exact_new_wave_behavior(self):
+        html=(ROOT / "mini-app/direct-preview.html").read_text("utf-8")
+        self.assertIn("let greetedDuringForm=false;",html)
+        self.assertIn("if(kind==='ack'){",html)
+        self.assertIn("if(greetedDuringForm)return;",html)
+        self.assertIn("transform:rotate(53deg)",html)
+        self.assertIn(".robot-arm.wave{animation:arm-wave .55s",html)
+        self.assertNotIn("reduced.matches",html)
+
     def test_broad_selections_require_a_concrete_request(self):
         js = (ROOT / "mini-app/app.js").read_text("utf-8")
         self.assertIn("return draft.sectors.includes('all') || draft.audience==='all'", js)
