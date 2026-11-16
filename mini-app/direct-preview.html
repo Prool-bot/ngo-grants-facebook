@@ -25,9 +25,9 @@ button:focus-visible,input:focus-visible,textarea:focus-visible{outline:3px soli
 .robot-figure{display:block;position:relative;width:min(100%,145px);aspect-ratio:1;flex-shrink:1;min-height:0}
 .robot,.robot-arm{height:100%;width:100%;object-fit:contain;display:block}
 .robot{transform-origin:50% 65%}
-.robot.react{animation:ack .38s ease-in-out 1}
-.robot-arm{position:absolute;inset:0;pointer-events:none;opacity:0;clip-path:polygon(16% 41%,43% 41%,43% 71%,16% 71%);transform-origin:31% 53%}
-.robot-arm.wave{opacity:1;animation:arm-wave .9s ease-in-out 1}
+
+.robot-arm{position:absolute;inset:0;pointer-events:none;opacity:0;clip-path:polygon(4% 36%,48% 36%,48% 80%,4% 80%);transform-origin:30% 55%;will-change:transform}
+.robot-arm.wave{opacity:1;animation:arm-wave 1.3s ease-in-out 1}
 .robot-greet{font-size:11px;font-weight:700;color:#3167a7;background:#f4f8fe;border:1px solid #dce6f3;border-radius:30px;padding:2px 10px;line-height:1.35;margin-top:-5px}
 .robot-greet:hover{background:#e9f3ff}
 .speech{min-width:0}
@@ -59,11 +59,11 @@ button:disabled{opacity:.48;cursor:not-allowed}
 .summary dd{margin:0;font-weight:650;overflow-wrap:anywhere}
 .summary .notice{margin:15px 0 0;padding:12px;background:#fff6e4;border:1px solid #f1d8a4;border-radius:9px;color:#745016;font-size:13px}
 .disclaimer{font-size:12px;color:#637b93;line-height:1.45;margin:20px 0 0}
-@keyframes ack{0%,100%{transform:rotate(0)}50%{transform:rotate(-1deg)}}
-@keyframes arm-wave{0%,100%{transform:rotate(0)}25%{transform:rotate(24deg)}50%{transform:rotate(-18deg)}75%{transform:rotate(18deg)}}
+@keyframes ack{0%,100%{transform:none}}
+@keyframes arm-wave{0%,100%{transform:rotate(0deg)}15%,44%,73%{transform:rotate(-25deg)}30%,59%,87%{transform:rotate(11deg)}}
 @media(min-width:740px){body{padding:30px 15px}.shell{border:1px solid #dce8f6;border-radius:24px;padding:0 30px 22px;box-shadow:0 10px 45px #122d5110}.intro{grid-template-columns:185px 1fr}.robot-box{height:185px}}
 @media(max-width:380px){.shell{padding:0 12px 18px}.intro{gap:8px;grid-template-columns:110px 1fr}.robot-box{height:138px}.brand{font-size:16px}.summary .row{grid-template-columns:102px 1fr}}
-@media(prefers-reduced-motion:reduce){.robot.react,.robot-arm.wave{animation:none}.progress-bar>div{transition:none}}
+@media(prefers-reduced-motion:reduce){.robot-arm.wave{animation:none;opacity:0}.progress-bar>div{transition:none}}
 
 </style>
 </head>
@@ -344,12 +344,12 @@ el('disclaimer').textContent=direct
 let focusExtra=false;
 const pages=[
  {key:'audience',heading:'Хто подаватиме заявку?',help:'Виберіть реального заявника. Варіант «Усі типи» створює оглядовий, а не персональний каталог.',options:schema.audiences},
- {key:'sectors',heading:'Які напрями вас цікавлять?',help:'Краще 1–2 конкретні сфери. Три та більше сфер суттєво розширюють каталог і знижують точність.',options:schema.sectors,multi:true},
+ {key:'sectors',heading:'Які напрями вас цікавлять?',help:'Оберіть 1–2 пріоритетні сфери. «Усі напрями» створює огляд; для точного добору опишіть конкретну потребу далі.',options:schema.sectors,multi:true},
  {key:'custom_sector',heading:'Потрібен точніший напрям?',help:'За бажанням додайте власний напрям. Можна пропустити.',optional:true,free:true,max:60},
  {key:'geo',heading:'Де шукаємо можливості?',help:'Географія допомагає відсіяти непридатні конкурси.',options:schema.geos},
  {key:'region',heading:'Оберіть регіон України',help:'Врахуємо вимоги щодо місця реалізації проєкту.',options:schema.regions,
    visible:()=>draft.geo==='region'},
- {key:'detail',heading:'Яку конкретну можливість ви шукаєте?',help:'Вкажіть діяльність, для кого вона, а за потреби — вашу професію/освіту. Це підвищує точність. Не зазначайте контакти.',free:true,optional:true,max:180},
+ {key:'detail',heading:'Яку конкретну можливість ви шукаєте?',help:'Опишіть, що саме має фінансуватися і хто подаватиме заявку. Для фізичних осіб можна вказати фах чи кваліфікацію, але без контактів і персональних даних.',free:true,optional:true,max:180},
  {key:'applicant_role',heading:'У якій ролі братимете участь?',help:'Конкурси можуть вимагати статусу головного заявника чи партнера.',options:schema.roles},
  {key:'funding_format',heading:'Яке фінансування вам потрібне?',help:'Виберіть лише гранти або ширший перелік можливостей.',options:schema.formats}
 ];
@@ -360,24 +360,20 @@ function all(){return visible().length;}
 function page(){return visible()[index]||null;}
 function resetNode(n){n.replaceChildren();}
 function trigger(kind='ack'){
+ // Only an explicit visitor greeting may start the wave. Never animate the
+ // robot body on form navigation, answer selection or a server receipt.
+ if(kind!=='wave'||!robotArm||reduced.matches)return;
  if(reactionTimeout!==null)clearTimeout(reactionTimeout);
- robot.classList.remove('react');
- if(robotArm)robotArm.classList.remove('wave');
- if(reduced.matches)return;
- if(kind==='wave'&&robotArm){
-   void robotArm.offsetWidth;
-   robotArm.classList.add('wave');
- }else{
-   void robot.offsetWidth;
-   robot.classList.add('react');
- }
+ robotArm.classList.remove('wave');
+ void robotArm.offsetWidth;
+ robotArm.classList.add('wave');
  reactionTimeout=setTimeout(()=>{
-   robot.classList.remove('react');
-   if(robotArm)robotArm.classList.remove('wave');
- },1000);
+   robotArm.classList.remove('wave');
+   reactionTimeout=null;
+ },1450);
 }
 function needsDetail(){
- return (draft.audience==='all'&&draft.sectors.includes('all')) ||
+ return draft.sectors.includes('all') || draft.audience==='all' ||
         (draft.sectors.length>=3&&!draft.sectors.includes('all'));
 }
 function error(msg){el('error').textContent=msg||'';}
