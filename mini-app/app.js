@@ -6,11 +6,12 @@ const schema=window.NgoGrantsSchema;
 if(!schema){document.getElementById('error').textContent='Не вдалося завантажити анкету.';return;}
 const el=id=>document.getElementById(id);
 const choices=el('choices'),extra=el('extra'),input=el('extraInput');
-const robot=el('robot'),robotArm=el('robotArm'),reduced=window.matchMedia('(prefers-reduced-motion: reduce)');
+const robotArm=el('robotArm');
 const draft={audience:'',sectors:[],geo:'',region:'',detail:'',
  custom_sector:'',applicant_role:'lead',funding_format:'any'};
 let index=0;
 let reactionTimeout=null;
+let greetedDuringForm=false;
 const live=root.dataset.nativeSend==='true';
 const direct=root.dataset.directSend==='true';
 if(live&&direct){
@@ -62,9 +63,15 @@ function all(){return visible().length;}
 function page(){return visible()[index]||null;}
 function resetNode(n){n.replaceChildren();}
 function trigger(kind='ack'){
- // Only an explicit visitor greeting may start the wave. Never animate the
- // robot body on form navigation, answer selection or a server receipt.
- if(kind!=='wave'||!robotArm||reduced.matches)return;
+ // One calm wave on the first real form interaction; further waves only when
+ // the visitor explicitly presses '👋 Привіт'. The robot BODY never moves.
+ // Do not suppress a user-requested gesture just because motion is reduced:
+ // CSS provides a shorter, gentler wave for accessibility.
+ if(!robotArm)return;
+ if(kind==='ack'){
+   if(greetedDuringForm)return;
+   greetedDuringForm=true;
+ }else if(kind!=='wave')return;
  if(reactionTimeout!==null)clearTimeout(reactionTimeout);
  robotArm.classList.remove('wave');
  void robotArm.offsetWidth;
