@@ -1,5 +1,6 @@
 """Offline guards for Mini App v0.5.4 HTML-only production patch."""
 import json
+from base64 import b64encode
 from pathlib import Path
 import sys
 from unittest import TestCase
@@ -10,6 +11,7 @@ from patch_live_worker_mini_app_direct_v05 import direct_html
 from patch_mini_app_v054_ui import patch
 from patch_mini_app_real_session_dryrun import ROUTE as VERIFIED_DRYRUN_ROUTE
 from mini_app_expected_worker_version import expected_version
+from read_live_mini_app_v05_diagnosis import extract_active_module
 
 MARKERS=(
  "NGO_GRANTS_NATIVE_MINI_APP_V01",
@@ -78,3 +80,22 @@ class V054Tests(TestCase):
         self.assertIn("robotArm.classList.add('wave')",js)
         self.assertIn("@keyframes arm-wave",css)
         self.assertNotIn("translateY(-4px)",css)
+
+    def test_versioned_cloudflare_read_uses_only_approved_active_module(self):
+        version="12345678-1234-1234-1234-1234567890ab"
+        payload={"id":version,"main_module":"worker.mjs","modules":[{
+            "name":"worker.mjs",
+            "content_type":"application/javascript+module",
+            "content_base64":b64encode(original().encode("utf-8")).decode("ascii"),
+        }]}
+        self.assertEqual(extract_active_module(payload,version),original())
+        for modified in (
+            {**payload,"id":"99999999-1234-1234-1234-1234567890ab"},
+            {**payload,"main_module":"other.mjs"},
+            {**payload,"modules":[]},
+            {**payload,"modules":payload["modules"]*2},
+            {**payload,"modules":[{**payload["modules"][0],"content_base64":"bad-!"}]},
+            {**payload,"modules":[{**payload["modules"][0],"name":"other.mjs"}]},
+        ):
+            with self.subTest(modified=modified),self.assertRaises(RuntimeError):
+                extract_active_module(modified,version)
