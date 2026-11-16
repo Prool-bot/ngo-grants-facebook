@@ -36,7 +36,7 @@ from catalog_guard_v57 import quality_status, clarification_questions
 from catalog_precision_guard import same_grant_round, supports_explicit_open_applicants
 from catalog_quality_v60 import (
     effective_entry_deadline, first_mandatory_stage_deadline,
-    same_day_deadline_expired, opportunity_kind,
+    same_day_deadline_expired, opportunity_kind, open_for_new_applicants,
 )
 from catalog_presentation_v59 import partition_reviewed_rows
 from ngo_grants_v59_delivery import ensure_delivery, deliver_documents, reconcile_document
@@ -2255,6 +2255,8 @@ def rank_posts(rows: list[dict], query: str, keywords: list[str] | dict,
     for row in rows:
         content = row.get('text') or ''
         if not content:
+            continue
+        if not open_for_new_applicants(content, now):
             continue
         narrow = (facets.get('detail') or facets.get('custom_sector') or '') if facets else query
         # Explicit OR-set of individual / informal / school-pupil applicants
