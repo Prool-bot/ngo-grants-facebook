@@ -6,12 +6,11 @@ const schema=window.NgoGrantsSchema;
 if(!schema){document.getElementById('error').textContent='Не вдалося завантажити анкету.';return;}
 const el=id=>document.getElementById(id);
 const choices=el('choices'),extra=el('extra'),input=el('extraInput');
-const robotArm=el('robotArm');
+const robotFigure=el('robotFigure'),robotArm=el('robotArm');
 const draft={audience:'',sectors:[],geo:'',region:'',detail:'',
  custom_sector:'',applicant_role:'lead',funding_format:'any'};
 let index=0;
 let reactionTimeout=null;
-let greetedDuringForm=false;
 const live=root.dataset.nativeSend==='true';
 const direct=root.dataset.directSend==='true';
 if(live&&direct){
@@ -63,23 +62,21 @@ function all(){return visible().length;}
 function page(){return visible()[index]||null;}
 function resetNode(n){n.replaceChildren();}
 function trigger(kind='ack'){
- // One calm wave on the first real form interaction; further waves only when
- // the visitor explicitly presses '👋 Привіт'. The robot BODY never moves.
- // Do not suppress a user-requested gesture just because motion is reduced:
- // CSS provides a shorter, gentler wave for accessibility.
- if(!robotArm)return;
- if(kind==='ack'){
-   if(greetedDuringForm)return;
-   greetedDuringForm=true;
- }else if(kind!=='wave')return;
+ // Every deliberate form action restarts BOTH motions: one short bounce of
+ // the complete figure and an independent wave of the left arm. No idle loop,
+ // no separate greeting button, no change to request form or order submission.
+ if(kind!=='ack'||!robotFigure||!robotArm)return;
  if(reactionTimeout!==null)clearTimeout(reactionTimeout);
+ robotFigure.classList.remove('hop');
  robotArm.classList.remove('wave');
- void robotArm.offsetWidth;
+ void robotFigure.offsetWidth; // reflow restarts both gestures on rapid taps
+ robotFigure.classList.add('hop');
  robotArm.classList.add('wave');
  reactionTimeout=setTimeout(()=>{
+   robotFigure.classList.remove('hop');
    robotArm.classList.remove('wave');
    reactionTimeout=null;
- },1450);
+ },1420);
 }
 function needsDetail(){
  return draft.sectors.includes('all') || draft.audience==='all' ||
@@ -294,8 +291,6 @@ el('reset').addEventListener('click',()=>{
    custom_sector:'',applicant_role:'lead',funding_format:'any'});
  index=0;render();trigger('ack');
 });
-const greetButton=el('greet');
-if(greetButton)greetButton.addEventListener('click',()=>trigger('wave'));
 if(window.Telegram&&window.Telegram.WebApp){
  try{window.Telegram.WebApp.ready();window.Telegram.WebApp.expand();}catch(_){}
 }

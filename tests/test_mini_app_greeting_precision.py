@@ -6,29 +6,33 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class RobotAndFormTests(unittest.TestCase):
-    def test_greeting_only_triggers_arm_wave(self):
+    def test_every_form_action_triggers_both_layers(self):
         js = (ROOT / "mini-app/app.js").read_text("utf-8")
         css = (ROOT / "mini-app/styles.css").read_text("utf-8")
-        self.assertIn("if(!robotArm)return;", js)
-        self.assertIn("if(kind==='ack'){", js)
-        self.assertIn("if(greetedDuringForm)return;", js)
-        self.assertIn("greetedDuringForm=true;", js)
-        self.assertNotIn("reduced.matches", js)
-        self.assertIn("()=>trigger('wave')", js)
-        self.assertNotIn("robot.classList.add('react')", js)
-        self.assertNotIn(".robot.react{animation:", css)
-        self.assertIn(".robot-arm.wave{opacity:1;animation:arm-wave", css)
-        self.assertIn("transform:rotate(53deg)", css)
-        self.assertIn(".robot-arm.wave{animation:arm-wave .55s", css)
+        self.assertIn("if(kind!=='ack'||!robotFigure||!robotArm)return;",js)
+        self.assertIn("robotFigure.classList.add('hop');",js)
+        self.assertIn("robotArm.classList.add('wave');",js)
+        self.assertIn("void robotFigure.offsetWidth",js)
+        self.assertNotIn("greetButton",js)
+        self.assertNotIn("greetedDuringForm",js)
+        self.assertNotIn("setInterval",js)
+        self.assertIn(".robot-figure.hop{animation:robot-hop",css)
+        self.assertIn("@keyframes robot-hop",css)
+        self.assertIn(".robot-arm.wave{opacity:1;animation:arm-wave",css)
+        self.assertIn("@keyframes arm-wave",css)
+        self.assertNotIn(".robot-greet",css)
 
-    def test_embedded_telegram_html_has_the_exact_new_wave_behavior(self):
+    def test_embedded_telegram_html_has_both_gestures_and_no_greeting(self):
         html=(ROOT / "mini-app/direct-preview.html").read_text("utf-8")
-        self.assertIn("let greetedDuringForm=false;",html)
-        self.assertIn("if(kind==='ack'){",html)
-        self.assertIn("if(greetedDuringForm)return;",html)
-        self.assertIn("transform:rotate(53deg)",html)
-        self.assertIn(".robot-arm.wave{animation:arm-wave .55s",html)
-        self.assertNotIn("reduced.matches",html)
+        self.assertIn('id="robotFigure"',html)
+        self.assertIn('id="robotArm"',html)
+        self.assertIn("robotFigure.classList.add('hop');",html)
+        self.assertIn("robotArm.classList.add('wave');",html)
+        self.assertIn("@keyframes robot-hop",html)
+        self.assertIn("@keyframes arm-wave",html)
+        self.assertNotIn('id="greet"',html)
+        self.assertNotIn("👋 Привіт",html)
+        self.assertNotIn("greetedDuringForm",html)
 
     def test_broad_selections_require_a_concrete_request(self):
         js = (ROOT / "mini-app/app.js").read_text("utf-8")

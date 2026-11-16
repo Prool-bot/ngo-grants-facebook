@@ -15,6 +15,7 @@ LATEST_RECEIPT=Path(__file__).resolve().parents[1]/"launches/mini_app_v052_live_
 V053_RECEIPT=Path(__file__).resolve().parents[1]/"launches/mini_app_v053_live_version.json"
 V054_RECEIPT=Path(__file__).resolve().parents[1]/"launches/mini_app_v054_live_version.json"
 V055_RECEIPT=Path(__file__).resolve().parents[1]/"launches/mini_app_v055_live_version.json"
+V056_RECEIPT=Path(__file__).resolve().parents[1]/"launches/mini_app_v056_live_version.json"
 
 def expected_version()->str:
     if not RECEIPT.is_file():return ORIGINAL
@@ -59,4 +60,13 @@ def expected_version()->str:
         not isinstance(waving,str) or
         not re.fullmatch(r"[a-f0-9-]{36}",waving) or waving==upgraded):
         raise RuntimeError("Unexpected v0.5.5 visible robot wave release receipt")
-    return waving
+    if not V056_RECEIPT.is_file():return waving
+    gesture=json.loads(V056_RECEIPT.read_text("utf-8"))
+    combined=gesture.get("version_id")
+    if (gesture.get("status")!="deployed_verified" or
+        gesture.get("previous_version")!=waving or
+        gesture.get("script")!="ngo-grants-instant-bot" or
+        not isinstance(combined,str) or
+        not re.fullmatch(r"[a-f0-9-]{36}",combined) or combined==waving):
+        raise RuntimeError("Unexpected v0.5.6 per-choice hop and hand wave release receipt")
+    return combined
