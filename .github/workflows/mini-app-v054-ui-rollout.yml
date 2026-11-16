@@ -7,6 +7,7 @@ on:
       - '.github/workflows/mini-app-v054-ui-rollout.yml'
       - 'worker/patch_mini_app_v054_ui.py'
       - 'worker/release_mini_app_v054_ui.py'
+      - 'mini-app/direct-preview.html'
   workflow_dispatch:
   pull_request:
     paths:
