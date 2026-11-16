@@ -1,0 +1,89 @@
+name: NGO Grants Mini App v0.5.5 — visible first-answer hand wave UI rollout
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/mini-app-v055-wave-rollout.yml'
+      - 'worker/patch_mini_app_v054_ui.py'
+      - 'worker/read_live_mini_app_v05_diagnosis.py'
+      - 'tests/test_mini_app_greeting_precision.py'
+      - 'worker/release_mini_app_v055_wave.py'
+      - 'mini-app/direct-preview.html'
+      - 'mini-app/app.js'
+      - 'mini-app/styles.css'
+      - 'mini-app/tests/flow.test.cjs'
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'worker/patch_mini_app_v054_ui.py'
+      - 'worker/release_mini_app_v055_wave.py'
+      - 'worker/mini_app_expected_worker_version.py'
+      - 'worker/read_live_mini_app_v05_diagnosis.py'
+      - 'tests/test_mini_app_v054_ui.py'
+      - 'tests/test_mini_app_greeting_precision.py'
+      - 'mini-app/tests/flow.test.cjs'
+      - 'mini-app/app.js'
+      - 'mini-app/styles.css'
+      - 'mini-app/direct-preview.html'
+      - '.github/workflows/mini-app-v055-wave-rollout.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ngo-grants-worker-production-deploy
+  cancel-in-progress: false
+
+jobs:
+  offline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Validate exact Worker patch and existing Mini App client without secrets
+        run: |
+          python -m py_compile worker/read_live_mini_app_v05_diagnosis.py worker/patch_mini_app_v054_ui.py worker/release_mini_app_v055_wave.py worker/mini_app_expected_worker_version.py
+          python -m unittest discover -s tests -p 'test_mini_app_v054_ui.py' -v
+          python -m unittest discover -s tests -p 'test_mini_app_greeting_precision.py' -v
+          node --test mini-app/tests/*.test.cjs mini-app/tests/*.test.mjs
+
+  safe_release:
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    needs: offline
+    runs-on: ubuntu-latest
+    timeout-minutes: 14
+    env:
+      CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
+      CF_WORKER_ACCOUNT_ID: ${{ secrets.CF_WORKER_ACCOUNT_ID }}
+      CF_WORKER_API_TOKEN: ${{ secrets.CF_WORKER_API_TOKEN }}
+      NGO_BOT_GATEWAY_URL: ${{ secrets.NGO_BOT_GATEWAY_URL }}
+      NGO_GRANTS_AI_BOT_TOKEN: ${{ secrets.NGO_GRANTS_AI_BOT_TOKEN }}
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      NGO_MINI_APP_V055_RELEASE_APPROVED: 'YES_RELEASE_MINI_APP_V055_VISIBLE_HAND_WAVE_CANARY'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Verify existing deployment before staging
+        run: python scripts/mini_app_v05_health_readonly.py
+      - name: Patch only the currently served HTML; stage, canary and auto-rollback on failure
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          scratch="$(mktemp -d "${RUNNER_TEMP}/ngo-miniapp-v055.XXXXXX")"
+          trap 'rm -rf "$scratch"' EXIT
+          python worker/read_live_mini_app_v05_diagnosis.py "$scratch/worker-before.mjs"
+          python worker/patch_mini_app_v054_ui.py "$scratch/worker-before.mjs" "$scratch/worker-after.mjs"
+          node --check "$scratch/worker-after.mjs"
+          python worker/stage_worker_mini_app.py "$scratch/worker-after.mjs"
+          python worker/release_mini_app_v055_wave.py
