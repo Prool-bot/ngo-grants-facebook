@@ -46,12 +46,12 @@ el('disclaimer').textContent=direct
 let focusExtra=false;
 const pages=[
  {key:'audience',heading:'Хто подаватиме заявку?',help:'Виберіть реального заявника. Варіант «Усі типи» створює оглядовий, а не персональний каталог.',options:schema.audiences},
- {key:'sectors',heading:'Які напрями вас цікавлять?',help:'Краще 1–2 конкретні сфери. Три та більше сфер суттєво розширюють каталог і знижують точність.',options:schema.sectors,multi:true},
+ {key:'sectors',heading:'Які напрями вас цікавлять?',help:'Оберіть 1–2 пріоритетні сфери. «Усі напрями» створює огляд; для точного добору опишіть конкретну потребу далі.',options:schema.sectors,multi:true},
  {key:'custom_sector',heading:'Потрібен точніший напрям?',help:'За бажанням додайте власний напрям. Можна пропустити.',optional:true,free:true,max:60},
  {key:'geo',heading:'Де шукаємо можливості?',help:'Географія допомагає відсіяти непридатні конкурси.',options:schema.geos},
  {key:'region',heading:'Оберіть регіон України',help:'Врахуємо вимоги щодо місця реалізації проєкту.',options:schema.regions,
    visible:()=>draft.geo==='region'},
- {key:'detail',heading:'Яку конкретну можливість ви шукаєте?',help:'Вкажіть діяльність, для кого вона, а за потреби — вашу професію/освіту. Це підвищує точність. Не зазначайте контакти.',free:true,optional:true,max:180},
+ {key:'detail',heading:'Яку конкретну можливість ви шукаєте?',help:'Опишіть, що саме має фінансуватися і хто подаватиме заявку. Для фізичних осіб можна вказати фах чи кваліфікацію, але без контактів і персональних даних.',free:true,optional:true,max:180},
  {key:'applicant_role',heading:'У якій ролі братимете участь?',help:'Конкурси можуть вимагати статусу головного заявника чи партнера.',options:schema.roles},
  {key:'funding_format',heading:'Яке фінансування вам потрібне?',help:'Виберіть лише гранти або ширший перелік можливостей.',options:schema.formats}
 ];
@@ -62,24 +62,20 @@ function all(){return visible().length;}
 function page(){return visible()[index]||null;}
 function resetNode(n){n.replaceChildren();}
 function trigger(kind='ack'){
+ // Only an explicit visitor greeting may start the wave. Never animate the
+ // robot body on form navigation, answer selection or a server receipt.
+ if(kind!=='wave'||!robotArm||reduced.matches)return;
  if(reactionTimeout!==null)clearTimeout(reactionTimeout);
- robot.classList.remove('react');
- if(robotArm)robotArm.classList.remove('wave');
- if(reduced.matches)return;
- if(kind==='wave'&&robotArm){
-   void robotArm.offsetWidth;
-   robotArm.classList.add('wave');
- }else{
-   void robot.offsetWidth;
-   robot.classList.add('react');
- }
+ robotArm.classList.remove('wave');
+ void robotArm.offsetWidth;
+ robotArm.classList.add('wave');
  reactionTimeout=setTimeout(()=>{
-   robot.classList.remove('react');
-   if(robotArm)robotArm.classList.remove('wave');
- },1000);
+   robotArm.classList.remove('wave');
+   reactionTimeout=null;
+ },1450);
 }
 function needsDetail(){
- return (draft.audience==='all'&&draft.sectors.includes('all')) ||
+ return draft.sectors.includes('all') || draft.audience==='all' ||
         (draft.sectors.length>=3&&!draft.sectors.includes('all'));
 }
 function error(msg){el('error').textContent=msg||'';}
