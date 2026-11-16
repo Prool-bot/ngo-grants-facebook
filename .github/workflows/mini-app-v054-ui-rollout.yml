@@ -1,15 +1,7 @@
 name: NGO Grants Mini App v0.5.4 — guarded form and arm wave UI rollout
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - '.github/workflows/mini-app-v054-ui-rollout.yml'
-      - 'worker/patch_mini_app_v054_ui.py'
-      - 'worker/read_live_mini_app_v05_diagnosis.py'
-      - 'tests/test_mini_app_v054_ui.py'
-      - 'worker/release_mini_app_v054_ui.py'
-      - 'mini-app/direct-preview.html'
+  # v0.5.4 is already in production; never auto-redeploy its one-time release.
   workflow_dispatch:
   pull_request:
     paths:
