@@ -1,7 +1,7 @@
 """Patch only the embedded public Mini App HTML in the *approved live* Worker.
 
-No D1/API/bot logic changes. Fail closed if Cloudflare's last-uploaded script
-is not the exact HTML served by the currently deployed production version.
+No D1/API/bot logic changes. Fail closed unless the exact active Worker source
+matches the HTML served by the currently deployed production version.
 Never store Worker source in GitHub, logs or artifacts.
 """
 from __future__ import annotations
@@ -28,9 +28,8 @@ STAGING_MARKERS=(
 
 
 def patch(source: str, *, old_live_html: str, new_html: str) -> str:
-    # Cloudflare's GET /scripts/{name} serves the latest UPLOADED version,
-    # which may be a temporary stage-only probe rather than the deployed
-    # version. Reverse ONLY the byte-for-byte known dry-run insertion.
+    # Older stage-only probes are never allowed into the production candidate.
+    # Reverse ONLY the byte-for-byte known dry-run insertion if encountered.
     marker="NGO_MINIAPP_V052_STAGE_ONLY_AUTH_DRYRUN"
     if marker in source:
         if source.count(VERIFIED_DRYRUN_ROUTE)!=1:
@@ -57,9 +56,12 @@ def patch(source: str, *, old_live_html: str, new_html: str) -> str:
     required=(
         'data-native-send="false" data-direct-send="true"',
         'telegram-web-app.js',
-        'id="greet"',
+        'id="robotFigure"',
         'id="robotArm"',
         "function needsDetail(){",
+        "robotFigure.classList.add('hop');",
+        "robotArm.classList.add('wave');",
+        "@keyframes robot-hop",
         "@keyframes arm-wave",
         "NgoGrantsDirectClient",
     )
@@ -67,6 +69,7 @@ def patch(source: str, *, old_live_html: str, new_html: str) -> str:
         raise RuntimeError("Updated Mini App missing required UI/security elements")
     if ("const __ngoMiniAppDirectRouteEnabled=true;" in new_html or
         "<script src=\"./" in new_html or
+        'id="greet"' in new_html or
         new_html==stored_html):
         raise RuntimeError("Updated embedded UI is invalid or unchanged")
     replacement=json.dumps(new_html,ensure_ascii=True)
