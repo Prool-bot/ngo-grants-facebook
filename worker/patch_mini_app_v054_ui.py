@@ -15,6 +15,7 @@ import urllib.request
 from pathlib import Path
 
 from patch_live_worker_mini_app_direct_v05 import direct_html
+from patch_mini_app_real_session_dryrun import ROUTE as VERIFIED_DRYRUN_ROUTE
 
 PREFIX="const __ngoMiniAppDirectHTML="
 SENTINEL="NGO_MINIAPP_V053_TELEGRAM_MEMBER_POST_REDIRECT_FIX"
@@ -27,6 +28,14 @@ STAGING_MARKERS=(
 
 
 def patch(source: str, *, old_live_html: str, new_html: str) -> str:
+    # Cloudflare's GET /scripts/{name} serves the latest UPLOADED version,
+    # which may be a temporary stage-only probe rather than the deployed
+    # version. Reverse ONLY the byte-for-byte known dry-run insertion.
+    marker="NGO_MINIAPP_V052_STAGE_ONLY_AUTH_DRYRUN"
+    if marker in source:
+        if source.count(VERIFIED_DRYRUN_ROUTE)!=1:
+            raise RuntimeError("Unknown staged probe code; refuse deployment")
+        source=source.replace(VERIFIED_DRYRUN_ROUTE,"",1)
     if (not source or len(source) > 8_000_000 or
         source.count(PREFIX) != 1 or
         source.count(SENTINEL) != 1 or
