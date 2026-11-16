@@ -79,7 +79,21 @@ def first_mandatory_stage_deadline(post: str) -> date | None:
     invitation = bool(_INVITE_ONLY.search(str(post or "")))
     candidates: list[date] = []
     for index, line in enumerate(lines):
-        if not _STAGE.search(line):
+        stage_on_line = _STAGE.search(line)
+        # The heading may be just "ДЕДЛАЙН"; the next bullet then names
+        # an obligatory pre-proposal. Never interpret invite-only FULL
+        # proposal in the next bullet as an open application gateway.
+        is_stage_bullet = bool(
+            _dates(line) and
+            re.search(r"(?:pre[- ]?proposal|concept\s+note|"
+                      r"попередн\w*\s+(?:проєктн\w*\s+)?пропозиці\w*|"
+                      r"(?:обов.язков\w*\s+)?loi\b|"
+                      r"попередн\w*\s+заяв\w*)", line, re.I)
+            and any(re.search(r"дедлайн|deadline|кінцев\w*\s+термін",
+                              previous, re.I)
+                    for previous in lines[max(0,index-2):index])
+        )
+        if not stage_on_line and not is_stage_bullet:
             continue
         if _OPTIONAL_PRELIM.search(line):
             continue
@@ -90,12 +104,12 @@ def first_mandatory_stage_deadline(post: str) -> date | None:
             continue
         # LOI/preliminary may be optional; a clearly first required phase is
         # mandatory unless the source explicitly says it is optional.
-        if optional and re.search(r"loi|попередн|перш\w*\s+етап", line, re.I):
+        if optional and re.search(r"loi|попередн|перш\w*\s+етап|pre[- ]?proposal", line, re.I):
             continue
         # An unqualified LOI deadline by itself is not necessarily mandatory:
         # invitation-only progression is explicit evidence of a hard gateway.
-        if re.search(r"\bloi\b|letter\s+of\s+intent|попередн\w*", line, re.I):
-            if not invitation and not re.search(r"обов.язков|required|mandatory", snippet, re.I):
+        if re.search(r"\bloi\b|letter\s+of\s+intent|попередн\w*|pre[- ]?proposal", line, re.I):
+            if not invitation and not is_stage_bullet and not re.search(r"обов.язков|required|mandatory", snippet, re.I):
                 continue
         candidates.append(min(stage_dates))
     return min(candidates) if candidates else None
@@ -129,17 +143,25 @@ def same_day_deadline_expired(post: str, deadline: date | None,
         "PT": ZoneInfo("America/Los_Angeles"),
         "UTC": timezone.utc,
         "GMT": timezone.utc,
+        "CET": timezone(timedelta(hours=1)),
+        "CEST": timezone(timedelta(hours=2)),
         "EET": timezone(timedelta(hours=2)),
         "EEST": timezone(timedelta(hours=3)),
     }
-    for line in str(post or "").splitlines():
+    lines = str(post or "").splitlines()
+    for idx, line in enumerate(lines):
         if deadline not in _dates(line):
             continue
         if not re.search(r"дедлайн|deadline|close|закінчу|до\s+\d{1,2}", line, re.I):
             continue
+        # A time printed on a following "ЧАС" line still belongs to the
+        # exact deadline above. Do not search unrelated time mentions.
+        # Include up to two spacing/heading lines before an adjacent clock label.
+        context = " ".join(lines[idx:idx+4])
         match = re.search(
-            r"(?<!\d)([01]?\d|2[0-3]):([0-5]\d)\s*(EST|EDT|ET|PST|PDT|PT|UTC|GMT|EEST|EET)\b",
-            line, re.I
+            r"(?<!\d)([01]?\d|2[0-3]):([0-5]\d).{0,75}?"
+            r"\b(EST|EDT|ET|PST|PDT|PT|UTC|GMT|EEST|EET|CET|CEST)\b",
+            context, re.I
         )
         if match:
             h, minute, abbreviation = match.groups()
@@ -183,6 +205,26 @@ def qualification_warnings(post: str, facets: dict | None) -> tuple[str, ...]:
                  r"обов.язков\w*\s+очн\w*|required\s+in.person", evidence, re.I):
         issues.append("Обов'язкова очна участь або переїзд потребує підтвердження.")
     return tuple(issues)
+
+
+
+def open_for_new_applicants(post: str, as_of: date) -> bool:
+    """Fail closed for a plainly unannounced/upcoming submission window.
+
+    Without a verified opening date, archived text stating 'not yet open'
+    must NEVER be promoted to a currently available grant. The channel can
+    publish a new, explicitly open announcement later.
+    """
+    clean = str(post or "").casefold()
+    if re.search(
+        r"(?:прийом|поданн\w*\s+заяв\w*|конкурс).{0,45}"
+        r"(?:ще\s+не\s+розпочат\w*|ще\s+не\s+відкрит\w*|"
+        r"почнеться\s+(?:пізніше|у\s+20\d\d))|"
+        r"applications?\s+(?:are\s+)?not\s+(?:yet\s+)?open|"
+        r"call\s+not\s+yet\s+open", clean
+    ):
+        return False
+    return True
 
 
 def opportunity_kind(post: str) -> tuple[str, str]:

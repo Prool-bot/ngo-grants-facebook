@@ -11,7 +11,10 @@ class FakeElement {
  constructor(tag='div'){
   this.tag=tag;this.children=[];this.listeners={};this.hidden=false;
   this.disabled=false;this.dataset={};this.value='';
-  this.classList={add(){},remove(){}};
+  this._classes=new Set();
+  this.classList={add:(...names)=>names.forEach(x=>this._classes.add(x)),
+                  remove:(...names)=>names.forEach(x=>this._classes.delete(x)),
+                  contains:name=>this._classes.has(name)};
   this.style={};this.textContent='';this.className='';
  }
  append(...nodes){this.children.push(...nodes);}
@@ -21,10 +24,10 @@ class FakeElement {
  click(){const fn=this.listeners.click;if(fn)return fn({preventDefault(){}});}
  requestSubmit(){const fn=this.listeners.submit;if(fn)fn({preventDefault(){}});}
 }
-function start(nativeSend=false,directSend=false,post=async()=>{throw Error('mock post not configured');}){
+function start(nativeSend=false,directSend=false,post=async()=>{throw Error('mock post not configured');},allowMotion=false){
  const nodes={};
  const ids=[
-  'miniApp','choices','extra','extraInput','robot','question','hint','stepLabel',
+  'miniApp','choices','extra','extraInput','robot','robotArm','greet','question','hint','stepLabel',
   'progressFill','progress','back','next','reset','error','summary','extraLabel',
   'mode','disclaimer'
  ];
@@ -34,7 +37,7 @@ function start(nativeSend=false,directSend=false,post=async()=>{throw Error('moc
  nodes.miniApp.dataset.initialized='';
  nodes.progress.setAttribute=()=>{};
  const doc={getElementById:id=>nodes[id],createElement:tag=>new FakeElement(tag)};
- const wnd={NgoGrantsSchema:schema,matchMedia:()=>({matches:true})};
+ const wnd={NgoGrantsSchema:schema,matchMedia:()=>({matches:!allowMotion})};
  if(nativeSend||directSend)wnd.Telegram={WebApp:{ready(){},expand(){},initData:directSend?'SIGNED_FAKE_TELEGRAM_TEST_DATA':'',sendData(){throw Error('Never send in test');}}};
  if(directSend){
   wnd.NgoGrantsDirectClient=directClient;
@@ -158,4 +161,30 @@ test('direct-link UI refuses unconfirmed queue commit and keeps retry enabled',a
  assert.equal(send.textContent,'↻ Повторити підтвердження');
  assert.match(app.nodes.error.textContent,/тимчасово недоступний/);
  assert.doesNotMatch(app.nodes.summary.children.map(x=>x.textContent).join(' '),/№\\d+/);
+});
+
+
+test('broad all/all request demands a concrete description instead of 139 vague results',()=>{
+ const app=start();const {nodes,option,next,skip}=app;
+ option('Усі типи заявників');
+ option('Усі напрями');next();skip();
+ option('Міжнародні можливості');
+ assert.match(nodes.question.textContent,/конкретну можливість/);
+ assert.equal(nodes.next.textContent,'Далі →');
+ skip();
+ assert.match(nodes.error.textContent,/широкого запиту/);
+ assert.match(nodes.question.textContent,/конкретну можливість/);
+ nodes.extraInput.value='Соціальний транспорт для маломобільних людей';
+ skip();
+ assert.match(nodes.question.textContent,/ролі/);
+ next();next();
+ const warning=nodes.summary.children.find(x=>x.className==='notice'&&/Широкий вибір/.test(x.textContent));
+ assert.ok(warning);
+});
+test('robot arm waves on explicit hello while robot itself never bounces',()=>{
+ const app=start(false,false,undefined,true);
+ assert.equal(app.nodes.robotArm.classList.contains('wave'),false);
+ app.nodes.greet.click();
+ assert.equal(app.nodes.robotArm.classList.contains('wave'),true);
+ assert.equal(app.nodes.robot.classList.contains('wave'),false);
 });

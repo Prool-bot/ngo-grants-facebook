@@ -96,12 +96,26 @@ def _specific_official_paths(row: dict) -> set[str]:
             continue
     return keys
 
+def _conflicting_horizon_topic_ids(a: dict, b: dict) -> bool:
+    """Different EU topic IDs can share donor, date and keywords without duplication."""
+    expr = r"\bHORIZON-[A-Z0-9]+(?:-[A-Z0-9]+){2,}\b"
+    def ids(row):
+        src = str(row.get("text") or "") + " " + " ".join(
+            str(x) for x in (row.get("canonical_urls") or row.get("urls") or [])
+        )
+        return set(re.findall(expr, src.upper()))
+    left, right = ids(a), ids(b)
+    return bool(left and right and left.isdisjoint(right))
+
+
 def same_grant_round(a: dict, b: dict) -> bool:
     """Source-backed duplicate detection with a strict equal round deadline.
 
     Exact programme-specific official URL OR distinctive named programme in
     both descriptions. Never dedupe on donor host/year or generic subject alone.
     """
+    if _conflicting_horizon_topic_ids(a, b):
+        return False
     deadline = a.get("_deadline")
     if not deadline or deadline != b.get("_deadline"):
         return False
@@ -117,14 +131,88 @@ def same_grant_round(a: dict, b: dict) -> bool:
     latin = _latin_call_names(a.get("text") or "") & _latin_call_names(
         b.get("text") or "")
     if not latin:
-        return False
+        return _same_branded_round(a, b)
     generic = _COMMON_ENGLISH | {"research", "science", "award", "awards",
                                   "fellowship", "scholarship"}
     return (
-        _shared_donor_acronyms(a.get("text") or "", b.get("text") or "")
-        and any(len([w for w in phrase if w not in generic]) >= 1
-                for phrase in latin)
+        (_shared_donor_acronyms(a.get("text") or "", b.get("text") or "")
+         and any(len([w for w in phrase if w not in generic]) >= 1
+                 for phrase in latin))
+        or _same_branded_round(a, b)
     )
+
+
+# A second, evidence-backed route for repeated programme announcements in
+# different languages / headline styles. Generic foundation/donor words are
+# excluded: two awards by one donor must remain distinct.
+_BRAND_STOP = (_COMMON_ENGLISH | {
+    "foundation", "fund", "research", "award", "awards", "prize", "prizes",
+    "fellowship", "scholarship", "international", "creative", "europe",
+    "global", "european", "the", "new", "for", "grants", "grant", "2027",
+    "inc", "open", "opportunity", "competition", "national", "university",
+    "program", "programme", "call", "science", "funding",
+})
+
+
+def _brand_phrases(text: str) -> set[tuple[str, ...]]:
+    """Programme names within an announcement, not a broad host/umbrella URL.
+
+    A full two-token brand (Cities Deliver, SPARK Incubation) or a distinctive
+    hyphenated/CamelCase call word (BIE-Cosmos, WoodStock) counts as identity.
+    Ordinary donor terms such as 'Parkinson Foundation' are not programme IDs.
+    """
+    excerpt = str(text or "")[:2400]
+    found: set[tuple[str, ...]] = set()
+    # Mixed-case and distinctive hyphenated proper names are programme cues.
+    for m in re.finditer(r"\b[A-Za-z]{2,}(?:-[A-Za-z]{3,})+\b|"
+                         r"\b[A-Z][a-z]{2,}[A-Z][A-Za-z]{2,}\b", excerpt):
+        label = m.group().casefold()
+        if label not in _BRAND_STOP and len(label) >= 7:
+            found.add((label,))
+    for m in re.finditer(
+        r"(?<![A-Za-z])(?:[A-Z]{3,}|[A-Z][a-z]{2,})"
+        r"(?:[ -](?:[A-Z]{3,}|[A-Z][a-z]{2,})){1,4}\b", excerpt
+    ):
+        words = tuple(w.casefold() for w in re.findall(r"[A-Za-z]{3,}", m.group()))
+        meaningful = tuple(w for w in words if w not in _BRAND_STOP)
+        if len(meaningful) >= 2:
+            for i in range(len(meaningful)-1):
+                found.add(meaningful[i:i+2])
+    return found
+
+
+def _same_branded_round(a: dict, b: dict) -> bool:
+    if not a.get("_deadline") or a.get("_deadline") != b.get("_deadline"):
+        return False
+    both = _brand_phrases(a.get("text") or "") & _brand_phrases(b.get("text") or "")
+    if not both:
+        return False
+    # For an isolated brand word, avoid donor-only collisions: insist on
+    # same monetary evidence or an additional matching branded multiword phrase.
+    if any(len(parts) > 1 for parts in both):
+        return True
+    # Cross-language single-word names, particularly CamelCase / hyphenated,
+    # require a matching grant amount. Don't merge unrelated donor awards.
+    def amounts(post: str) -> set[tuple[str, int]]:
+        out = set()
+        for match in re.finditer(
+            r"([$€£₴])\s*(\d{1,3}(?:[.,\s]\d{3})+|\d{4,9})", post[:1900]):
+            value = int(re.sub(r"\D", "", match.group(2)))
+            if value >= 1000:
+                out.add((match.group(1), value))
+        return out
+    if amounts(a.get("text") or "") & amounts(b.get("text") or ""):
+        return True
+    # Rare CamelCase brand written identically in both posts is strong
+    # call identity even when one repost omits the grant amount (WoodStock).
+    # A generic donor surname such as Parkinson cannot satisfy this.
+    return any(
+        len(parts) == 1 and
+        all(re.search(r"\b[A-Z][a-z]{2,}[A-Z][A-Za-z]{2,}\b", str(row.get("text") or ""))
+            for row in (a, b))
+        for parts in both
+    )
+
 
 def _detail_modalities(detail: str) -> set[str]:
     q = unicodedata.normalize("NFKC", str(detail or "")).casefold()

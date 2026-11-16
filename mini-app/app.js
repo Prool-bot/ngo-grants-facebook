@@ -6,7 +6,7 @@ const schema=window.NgoGrantsSchema;
 if(!schema){document.getElementById('error').textContent='Не вдалося завантажити анкету.';return;}
 const el=id=>document.getElementById(id);
 const choices=el('choices'),extra=el('extra'),input=el('extraInput');
-const robot=el('robot'),reduced=window.matchMedia('(prefers-reduced-motion: reduce)');
+const robot=el('robot'),robotArm=el('robotArm'),reduced=window.matchMedia('(prefers-reduced-motion: reduce)');
 const draft={audience:'',sectors:[],geo:'',region:'',detail:'',
  custom_sector:'',applicant_role:'lead',funding_format:'any'};
 let index=0;
@@ -45,13 +45,13 @@ el('disclaimer').textContent=direct
  :'Це окремий прототип. Реальні замовлення та запити до Telegram/Cloudflare не надсилаються.';
 let focusExtra=false;
 const pages=[
- {key:'audience',heading:'Хто подаватиме заявку?',help:'Виберіть тип заявника, щоб ми врахували умови участі.',options:schema.audiences},
- {key:'sectors',heading:'Які напрями вас цікавлять?',help:'Можна обрати декілька сфер. Гранти перевірятимемо для кожної окремо.',options:schema.sectors,multi:true},
+ {key:'audience',heading:'Хто подаватиме заявку?',help:'Виберіть реального заявника. Варіант «Усі типи» створює оглядовий, а не персональний каталог.',options:schema.audiences},
+ {key:'sectors',heading:'Які напрями вас цікавлять?',help:'Краще 1–2 конкретні сфери. Три та більше сфер суттєво розширюють каталог і знижують точність.',options:schema.sectors,multi:true},
  {key:'custom_sector',heading:'Потрібен точніший напрям?',help:'За бажанням додайте власний напрям. Можна пропустити.',optional:true,free:true,max:60},
  {key:'geo',heading:'Де шукаємо можливості?',help:'Географія допомагає відсіяти непридатні конкурси.',options:schema.geos},
  {key:'region',heading:'Оберіть регіон України',help:'Врахуємо вимоги щодо місця реалізації проєкту.',options:schema.regions,
    visible:()=>draft.geo==='region'},
- {key:'detail',heading:'Що саме ви плануєте?',help:'Коротко опишіть діяльність або ідею проєкту. Не зазначайте контакти.',free:true,optional:true,max:180},
+ {key:'detail',heading:'Яку конкретну можливість ви шукаєте?',help:'Вкажіть діяльність, для кого вона, а за потреби — вашу професію/освіту. Це підвищує точність. Не зазначайте контакти.',free:true,optional:true,max:180},
  {key:'applicant_role',heading:'У якій ролі братимете участь?',help:'Конкурси можуть вимагати статусу головного заявника чи партнера.',options:schema.roles},
  {key:'funding_format',heading:'Яке фінансування вам потрібне?',help:'Виберіть лише гранти або ширший перелік можливостей.',options:schema.formats}
 ];
@@ -63,11 +63,24 @@ function page(){return visible()[index]||null;}
 function resetNode(n){n.replaceChildren();}
 function trigger(kind='ack'){
  if(reactionTimeout!==null)clearTimeout(reactionTimeout);
- robot.classList.remove('react','wave');
+ robot.classList.remove('react');
+ if(robotArm)robotArm.classList.remove('wave');
  if(reduced.matches)return;
- void robot.offsetWidth;
- robot.classList.add(kind==='wave'?'wave':'react');
- reactionTimeout=setTimeout(()=>robot.classList.remove('react','wave'),720);
+ if(kind==='wave'&&robotArm){
+   void robotArm.offsetWidth;
+   robotArm.classList.add('wave');
+ }else{
+   void robot.offsetWidth;
+   robot.classList.add('react');
+ }
+ reactionTimeout=setTimeout(()=>{
+   robot.classList.remove('react');
+   if(robotArm)robotArm.classList.remove('wave');
+ },1000);
+}
+function needsDetail(){
+ return (draft.audience==='all'&&draft.sectors.includes('all')) ||
+        (draft.sectors.length>=3&&!draft.sectors.includes('all'));
 }
 function error(msg){el('error').textContent=msg||'';}
 function makeButton(text,value,selected,callback,multi){
@@ -86,6 +99,8 @@ function next(){
  if(p.key==='audience'&&!draft.audience)return error('Оберіть заявника.');
  if(p.key==='sectors'&&!draft.sectors.length)return error('Оберіть хоча б один напрям.');
  if(p.key==='geo'&&!draft.geo)return error('Оберіть географію.');
+ if(p.key==='detail'&&needsDetail()&&draft.detail.trim().length<12)
+   return error('Для широкого запиту уточніть діяльність чи цільову групу (не менше 12 символів).');
  if(p.key==='region'&&!draft.region)return error('Оберіть регіон.');
  if(p.key==='applicant_role'&&!Object.prototype.hasOwnProperty.call(schema.roles,draft.applicant_role))
    return error('Оберіть роль заявника.');
@@ -122,11 +137,11 @@ function buttonOptions(p){
 function renderExtra(p){
  extra.hidden=false;
  el('extraLabel').textContent=p.key==='detail'?'Опишіть проєкт одним реченням':'Ваш напрям (необов’язково)';
- input.placeholder=p.key==='detail'?'Наприклад: соціальний транспорт для людей з інвалідністю':'Наприклад: документальне кіно';
+ input.placeholder=p.key==='detail'?'Наприклад: гранти для ГО на перевезення маломобільних людей':'Наприклад: документальне кіно';
  input.maxLength=p.max;
  input.value=draft[p.key]||'';
  el('next').hidden=false;
- el('next').textContent=draft[p.key]?'Далі →':'Пропустити →';
+ el('next').textContent=p.key==='detail'&&needsDetail()?'Далі →':draft[p.key]?'Далі →':'Пропустити →';
 }
 function businessApplicantNeedsReview(){
  return draft.audience==='individual'&&draft.sectors.includes('business');
@@ -155,6 +170,11 @@ function renderSummary(){
     ?'Після натискання Telegram передасть анкету боту. Він перевірить підписку та денний ліміт і підтвердить замовлення в чаті. Натискання саме по собі ще не означає прийняття.'
     :'✓ Анкету сформовано локально. Це лише демонстрація; замовлення не надсилається.';
   wrap.append(note);
+  if(needsDetail()||draft.audience==='all'||draft.sectors.includes('all')){
+    const warning=document.createElement('p');warning.className='notice';
+    warning.textContent='Широкий вибір дає оглядовий каталог. Для персонального добору краще вибрати один тип заявника, 1–2 сфери та описати конкретну діяльність.';
+    wrap.append(warning);
+  }
   if(businessApplicantNeedsReview()){
     const warn=document.createElement('p');
     warn.className='notice';
@@ -269,8 +289,10 @@ el('back').addEventListener('click',()=>{if(index>0){index--;render();trigger('a
 el('reset').addEventListener('click',()=>{
  Object.assign(draft,{audience:'',sectors:[],geo:'',region:'',detail:'',
    custom_sector:'',applicant_role:'lead',funding_format:'any'});
- index=0;render();trigger('wave');
+ index=0;render();trigger('ack');
 });
+const greetButton=el('greet');
+if(greetButton)greetButton.addEventListener('click',()=>trigger('wave'));
 if(window.Telegram&&window.Telegram.WebApp){
  try{window.Telegram.WebApp.ready();window.Telegram.WebApp.expand();}catch(_){}
 }

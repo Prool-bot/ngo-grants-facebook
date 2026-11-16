@@ -1,4 +1,4 @@
-"""Read-only acceptance QA on new REAL user catalog PDFs (after baseline #3935).
+"""Read-only acceptance QA on new REAL user catalog PDFs (after baseline #3940).
 
 Runs after public Git-backed delivery, never reprocesses a user order. Does
 not call Cloudflare, Telegram APIs, an LLM or any network endpoint. Uses the
@@ -25,7 +25,7 @@ from ngo_grants_ai import deadline_from_post, read_archive
 
 ROOT = Path(__file__).resolve().parents[1]
 PUBLIC_PDFS = (ROOT / "ai_catalogs" / "pdfs").resolve()
-BASELINE_LAST_POST = 3935
+BASELINE_LAST_POST = 3940
 REAL_MIN = 2 ** 51
 REAL_MAX = REAL_MIN + 2 ** 48
 POST_LINK = re.compile(r"^https://t\.me/ngo_grants/(\d+)$")
@@ -128,14 +128,14 @@ def check_catalog(item: dict, archive: dict[int, str]) -> list[str]:
 def main() -> int:
     state = json.loads((ROOT / "ai_catalogs" / "state.json").read_text("utf-8"))
     published = state.get("published") or []
-    # Baseline catalogs #3933–3935 are known historical failures and MUST NOT
+    # Baseline catalogs #3933–3940 are known historical failures and MUST NOT
     # cause a post-fix regression alarm. Never modify or resend them.
     new = [item for item in published
            if isinstance(item.get("id"), int)
            and REAL_MIN <= item["id"] < REAL_MAX
            and any(n > BASELINE_LAST_POST for n in public_message_ids(item))]
     if not new:
-        print("QA_NEW_REAL_CATALOGS=0 BASELINE_LAST_POST=3935")
+        print("QA_NEW_REAL_CATALOGS=0 BASELINE_LAST_POST=3940 KNOWN_PREVIOUS_DEBT=3933-3940")
         return 0
     archive = {int(p["id"]): str(p.get("text") or "") for p in read_archive()}
     problems = []

@@ -9,7 +9,8 @@ from datetime import date, datetime
 from catalog_guard_v57 import quality_status
 from catalog_precision_guard import supports_explicit_open_applicants, same_grant_round
 from catalog_quality_v60 import (effective_entry_deadline, same_day_deadline_expired,
-                                 qualification_warnings, opportunity_kind)
+                                 qualification_warnings, opportunity_kind,
+                                 open_for_new_applicants)
 
 
 def partition_reviewed_rows(rows: list[dict], facets: dict | None,
@@ -25,6 +26,8 @@ def partition_reviewed_rows(rows: list[dict], facets: dict | None,
     for original in rows:
         row = dict(original)
         ident = row.get("id")
+        if not open_for_new_applicants(row.get("text") or "", as_of):
+            continue
         if ident in seen:
             continue
         seen.add(ident)
