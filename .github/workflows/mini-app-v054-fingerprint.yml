@@ -1,0 +1,65 @@
+name: NGO Grants Mini App v0.5.4 — deployed source fingerprint read-only
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/mini-app-v054-fingerprint.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  fingerprint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
+      CF_WORKER_ACCOUNT_ID: ${{ secrets.CF_WORKER_ACCOUNT_ID }}
+      CF_WORKER_API_TOKEN: ${{ secrets.CF_WORKER_API_TOKEN }}
+      NGO_BOT_GATEWAY_URL: ${{ secrets.NGO_BOT_GATEWAY_URL }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - name: Inspect ONLY safe marker counts of approved currently served Mini App
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          scratch="$(mktemp -d "${RUNNER_TEMP}/ngo-miniapp-v054-fingerprint.XXXXXX")"
+          trap 'rm -rf "$scratch"' EXIT
+          python worker/read_live_mini_app_v05_diagnosis.py "$scratch/live.mjs"
+          python - "$scratch/live.mjs" <<'PY'
+          import json,sys
+          from pathlib import Path
+          import urllib.request
+          source=Path(sys.argv[1]).read_text("utf8")
+          keys={
+            "HTML_PREFIX":"const __ngoMiniAppDirectHTML=",
+            "V053_MARKER":"NGO_MINIAPP_V053_TELEGRAM_MEMBER_POST_REDIRECT_FIX",
+            "DIRECT_GATE":"const __ngoMiniAppDirectRouteEnabled=true;",
+            "DIRECT_V05":"NGO_MINI_APP_DIRECT_API_DORMANT_V05",
+            "V01":"NGO_GRANTS_NATIVE_MINI_APP_V01",
+            "MENU":"menu_version:'5.8'",
+            "STAGED_UPSTREAM":"NGO_MINIAPP_STAGE_TELEGRAM_UPSTREAM_METHODS_V053",
+            "STAGED_DRYRUN":"NGO_MINIAPP_V052_STAGE_ONLY_AUTH_DRYRUN",
+            "STAGED_D1":"NGO_MINI_APP_READONLY_D1_AGG_V052",
+            "STAGED_OTHER":"NGO_MINIAPP_STAGE_D1",
+          }
+          print("FINGERPRINT_COUNTS="+json.dumps({k:source.count(v) for k,v in keys.items()}))
+          prefix=keys["HTML_PREFIX"]
+          if source.count(prefix)==1:
+            import os
+            from worker.patch_mini_app_v054_ui import current_public_html
+            i=source.index(prefix)+len(prefix)
+            try:
+              embedded,n=json.JSONDecoder().raw_decode(source[i:])
+              actual=current_public_html(os.environ.get("NGO_BOT_GATEWAY_URL",""))
+              print("LAST_UPLOADED_HTML_MATCHES_ACTIVE="+str(embedded==actual))
+              print("EMBEDDED_HTML_RECOGNIZED="+str(source[i+n:i+n+1]==";"))
+            except Exception:
+              print("EMBEDDED_HTML_RECOGNIZED=False")
+          print("NO_SOURCE_OR_SECRET_CONTENT_PRINTED=True")
+          PY
