@@ -27,7 +27,7 @@ class FakeElement {
 function start(nativeSend=false,directSend=false,post=async()=>{throw Error('mock post not configured');},allowMotion=false){
  const nodes={};
  const ids=[
-  'miniApp','choices','extra','extraInput','robot','robotArm','greet','question','hint','stepLabel',
+  'miniApp','choices','extra','extraInput','robot','robotFigure','robotArm','question','hint','stepLabel',
   'progressFill','progress','back','next','reset','error','summary','extraLabel',
   'mode','disclaimer'
  ];
@@ -181,29 +181,34 @@ test('broad all/all request demands a concrete description instead of 139 vague 
  const warning=nodes.summary.children.find(x=>x.className==='notice'&&/Широкий вибір/.test(x.textContent));
  assert.ok(warning);
 });
-test('robot arm waves on explicit hello while robot itself never bounces',()=>{
- const app=start(false,false,undefined,true);
- assert.equal(app.nodes.robotArm.classList.contains('wave'),false);
- app.nodes.greet.click();
- assert.equal(app.nodes.robotArm.classList.contains('wave'),true);
- assert.equal(app.nodes.robot.classList.contains('wave'),false);
-});
-
-test('first form choice produces one real hand wave even with reduced motion; hello repeats it',()=>{
- const app=start(); // mock prefers-reduced-motion = true
- let armWaves=0;
- const originalAdd=app.nodes.robotArm.classList.add;
- app.nodes.robotArm.classList.add=(...names)=>{
-   if(names.includes('wave'))armWaves++;
-   return originalAdd(...names);
+test('each option and Continue restart both robot hop and hand wave, with no greeting button',()=>{
+ const app=start();
+ const {nodes,option,next}=app;
+ let armWaves=0,hops=0;
+ const originalArmAdd=nodes.robotArm.classList.add;
+ const originalHopAdd=nodes.robotFigure.classList.add;
+ nodes.robotArm.classList.add=(...names)=>{
+  if(names.includes('wave'))armWaves++;
+  return originalArmAdd(...names);
  };
- assert.equal(armWaves,0);
- app.option('Громадська організація / благодійний фонд');
- assert.equal(armWaves,1,'first answer must visibly start wave');
- assert.equal(app.nodes.robotArm.classList.contains('wave'),true);
- app.option('Соціальна та гуманітарна сфера');
- assert.equal(armWaves,1,'normal navigation must not wave continuously');
- app.nodes.greet.click();
- assert.equal(armWaves,2,'explicit hello replays wave');
- assert.equal(app.nodes.robot.classList.contains('wave'),false,'body stays still');
+ nodes.robotFigure.classList.add=(...names)=>{
+  if(names.includes('hop'))hops++;
+  return originalHopAdd(...names);
+ };
+ assert.equal(nodes.robotArm.classList.contains('wave'),false);
+ assert.equal(nodes.robotFigure.classList.contains('hop'),false);
+ option('Громадська організація / благодійний фонд');
+ assert.deepEqual([armWaves,hops],[1,1]);
+ option('Соціальна та гуманітарна сфера');
+ assert.deepEqual([armWaves,hops],[2,2]);
+ option('Соціальна та гуманітарна сфера'); // deselect same item
+ assert.deepEqual([armWaves,hops],[3,3]);
+ option('Соціальна та гуманітарна сфера'); // reselect
+ assert.deepEqual([armWaves,hops],[4,4]);
+ next();
+ assert.deepEqual([armWaves,hops],[5,5]);
+ assert.equal(nodes.robotArm.classList.contains('wave'),true);
+ assert.equal(nodes.robotFigure.classList.contains('hop'),true);
+ assert.equal(nodes.robot.classList.contains('hop'),false,'the container moves both layers together');
+ assert.equal(nodes.greet,undefined,'the greeting control is removed from the form');
 });
