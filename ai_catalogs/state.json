@@ -2235,7 +2235,7 @@
       1304,
       1764
     ],
-    "offset": 72,
+    "offset": 108,
     "selected_ids": [
       3511,
       3608,
@@ -2279,7 +2279,18 @@
       3130,
       2922,
       3432,
-      3762
+      3762,
+      19,
+      1940,
+      3045,
+      3622,
+      3673,
+      2493,
+      3052,
+      3128,
+      3004,
+      2816,
+      2491
     ],
     "selected_levels": {
       "3511": "conditional",
@@ -2324,7 +2335,18 @@
       "3130": "conditional",
       "2922": "conditional",
       "3432": "conditional",
-      "3762": "conditional"
+      "3762": "conditional",
+      "19": "conditional",
+      "1940": "conditional",
+      "3045": "conditional",
+      "3622": "conditional",
+      "3673": "conditional",
+      "2493": "conditional",
+      "3052": "conditional",
+      "3128": "conditional",
+      "3004": "conditional",
+      "2816": "conditional",
+      "2491": "conditional"
     }
   }
 }
