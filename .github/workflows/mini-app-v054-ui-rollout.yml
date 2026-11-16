@@ -6,6 +6,8 @@ on:
     paths:
       - '.github/workflows/mini-app-v054-ui-rollout.yml'
       - 'worker/patch_mini_app_v054_ui.py'
+      - 'worker/read_live_mini_app_v05_diagnosis.py'
+      - 'tests/test_mini_app_v054_ui.py'
       - 'worker/release_mini_app_v054_ui.py'
       - 'mini-app/direct-preview.html'
   workflow_dispatch:
@@ -14,6 +16,7 @@ on:
       - 'worker/patch_mini_app_v054_ui.py'
       - 'worker/release_mini_app_v054_ui.py'
       - 'worker/mini_app_expected_worker_version.py'
+      - 'worker/read_live_mini_app_v05_diagnosis.py'
       - 'tests/test_mini_app_v054_ui.py'
       - '.github/workflows/mini-app-v054-ui-rollout.yml'
 
@@ -36,7 +39,7 @@ jobs:
         with: {node-version: '22'}
       - name: Validate exact Worker patch and existing Mini App client without secrets
         run: |
-          python -m py_compile worker/patch_mini_app_v054_ui.py worker/release_mini_app_v054_ui.py worker/mini_app_expected_worker_version.py
+          python -m py_compile worker/read_live_mini_app_v05_diagnosis.py worker/patch_mini_app_v054_ui.py worker/release_mini_app_v054_ui.py worker/mini_app_expected_worker_version.py
           python -m unittest discover -s tests -p 'test_mini_app_v054_ui.py' -v
           node --test mini-app/tests/*.test.cjs mini-app/tests/*.test.mjs
 
