@@ -1570,6 +1570,7 @@
     272839046,
     272839062,
     272839064,
+    2297633095639260,
     2343529905919942,
     2497259707351563,
     2504323132886705
@@ -1676,6 +1677,32 @@
       },
       "published_on": "2026-11-08",
       "channel_url": "https://t.me/ngo_grants/3815"
+    },
+    {
+      "id": 2297633095639260,
+      "topic": "Навчання консультантів з повернення; для некомерційних організацій; сфери: Соціальна та гуманітарна сфера, Освіта та наука, Відбудова та розвиток громад, Підприємництво та інновації, Права людини, Підтримка украінців за кордоном; міжнародні",
+      "reason": "no_candidate",
+      "engine_version": 11,
+      "checked_on": "2026-11-17",
+      "status": "published",
+      "facets": {
+        "audience": "nonprofit",
+        "sectors": [
+          "social",
+          "education",
+          "recovery",
+          "business",
+          "rights"
+        ],
+        "custom_sector": "Підтримка украінців за кордоном",
+        "geo": "international",
+        "region": "",
+        "detail": "Навчання консультантів з повернення",
+        "applicant_role": "lead",
+        "funding_format": "grant_only"
+      },
+      "published_on": "2026-11-17",
+      "channel_url": "https://t.me/ngo_grants/3993"
     }
   ],
   "v59_deliveries": {
