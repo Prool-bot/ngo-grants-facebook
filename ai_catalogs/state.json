@@ -2510,7 +2510,8 @@
             null
           ]
         }
-      }
+      },
+      "navigation_status": "linked"
     }
   },
   "ai_review": {
