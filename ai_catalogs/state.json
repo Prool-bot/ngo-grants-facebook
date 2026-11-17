@@ -2,26 +2,7 @@
   "schema_version": 1,
   "last_update_id": 272838698,
   "users_days": {},
-  "queue": [
-    {
-      "id": 2524199553564298,
-      "topic": "Грантові та інші можливості; для некомерційних організацій; сфери: Права людини, Освіта та наука, молодь; в Україні",
-      "requested_at": "2026-11-17T19:49:59.283Z",
-      "facets": {
-        "audience": "nonprofit",
-        "sectors": [
-          "rights",
-          "education"
-        ],
-        "custom_sector": "молодь",
-        "geo": "ukraine",
-        "region": "",
-        "detail": "",
-        "applicant_role": "lead",
-        "funding_format": "grant_only"
-      }
-    }
-  ],
+  "queue": [],
   "published": [
     {
       "id": 272838672,
@@ -1559,9 +1540,63 @@
         "applicant_role": "either",
         "funding_format": "any"
       }
+    },
+    {
+      "id": 2524199553564298,
+      "topic": "Грантові та інші можливості; для некомерційних організацій; сфери: Права людини, Освіта та наука, молодь; в Україні",
+      "title": "права людини, освіта та наука, молодь — Україна",
+      "channel_url": "https://t.me/ngo_grants/3994",
+      "channel_urls": [
+        "https://t.me/ngo_grants/3994",
+        "https://t.me/ngo_grants/3995"
+      ],
+      "channel_tiers": [
+        "direct",
+        "conditional"
+      ],
+      "pdf": "ai_catalogs/pdfs/ngo_grants_v59_order_2524199553564298_direct.pdf",
+      "pdfs": [
+        "ai_catalogs/pdfs/ngo_grants_v59_order_2524199553564298_direct.pdf",
+        "ai_catalogs/pdfs/ngo_grants_v59_order_2524199553564298_conditional.pdf"
+      ],
+      "post_ids": [
+        3529,
+        3928,
+        3872,
+        3796,
+        1940,
+        3862,
+        1672,
+        3660,
+        338,
+        3466,
+        3488,
+        3448,
+        2363,
+        3080,
+        2712,
+        1265,
+        1304
+      ],
+      "published_on": "2026-11-17",
+      "valid_until": "2026-12-17",
+      "v59_document_count": 2,
+      "facets": {
+        "audience": "nonprofit",
+        "sectors": [
+          "rights",
+          "education"
+        ],
+        "custom_sector": "молодь",
+        "geo": "ukraine",
+        "region": "",
+        "detail": "",
+        "applicant_role": "lead",
+        "funding_format": "grant_only"
+      }
     }
   ],
-  "last_post_at": "2026-11-16T07:18:26.605350+00:00",
+  "last_post_at": "2026-11-17T20:01:02.587969+00:00",
   "bot_profile_version": 1,
   "gateway_seen_ids": [
     272838699,
@@ -2512,122 +2547,6 @@
         }
       },
       "navigation_status": "linked"
-    }
-  },
-  "ai_review": {
-    "request_id": 2524199553564298,
-    "title": "права людини, освіта та наука, молодь — Україна",
-    "keywords": {
-      "version": 11,
-      "title": "права людини, освіта та наука, молодь — Україна",
-      "subject": "права людини, освіта та наука, молодь",
-      "activity": "права людини, освіта та наука, молодь",
-      "applicant": "Некомерційна організація",
-      "requirements": [
-        "Тип заявника (обов’язково): Некомерційна організація",
-        "Сфери (будь-яка обрана): права людини, освіта та наука, молодь",
-        "Географія (обов’язково): Україна"
-      ],
-      "topic_groups": [],
-      "topic_synonyms": [],
-      "semantic_terms": [],
-      "query_anchors": [],
-      "audience": "any",
-      "region_root": "",
-      "regional_focus": false,
-      "applicant_required": false,
-      "facets": {
-        "audience": "nonprofit",
-        "sectors": [
-          "rights",
-          "education"
-        ],
-        "custom_sector": "молодь",
-        "geo": "ukraine",
-        "region": "",
-        "detail": "",
-        "applicant_role": "lead",
-        "funding_format": "grant_only"
-      },
-      "clarification_questions": [],
-      "source_query": ""
-    },
-    "candidate_ids": [
-      3608,
-      3862,
-      3448,
-      2243,
-      2337,
-      3495,
-      1940,
-      2996,
-      3052,
-      3415,
-      3488,
-      3113,
-      3207,
-      3156,
-      3088,
-      2596,
-      338,
-      3428,
-      2650,
-      3529,
-      3796,
-      1142,
-      3346,
-      3466,
-      3872,
-      2363,
-      3080,
-      3660,
-      2712,
-      3928,
-      2255,
-      1733,
-      1265,
-      623,
-      1672,
-      1304
-    ],
-    "offset": 36,
-    "selected_ids": [
-      3862,
-      1940,
-      3448,
-      3488,
-      3529,
-      3796,
-      338,
-      3466,
-      3872,
-      3928,
-      1672,
-      2363,
-      3080,
-      3660,
-      2712,
-      1265,
-      1304
-    ],
-    "selected_levels": {
-      "3862": "direct",
-      "1940": "direct",
-      "3448": "conditional",
-      "3488": "conditional",
-      "3529": "direct",
-      "3796": "direct",
-      "338": "conditional",
-      "3466": "conditional",
-      "3872": "direct",
-      "3928": "direct",
-      "1672": "direct",
-      "2363": "conditional",
-      "3080": "conditional",
-      "3660": "conditional",
-      "2712": "conditional",
-      "1265": "conditional",
-      "1304": "conditional"
     }
   }
 }
