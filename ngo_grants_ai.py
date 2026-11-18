@@ -1653,9 +1653,8 @@ def dedupe_programmes(rows: list[dict]) -> list[dict]:
         # URL alone therefore does not prove two records are the same grant.
         signature = _title_signature(row.get('_title') or '')
         same_url = [prior for key in keys for prior in seen_urls.get(key, [])]
-        if any(row.get('_deadline') == old.get('_deadline') and
-               (not signature or not _title_signature(old.get('_title') or '') or
-                len(signature & _title_signature(old.get('_title') or '')) >= 2)
+        if any(row.get('_deadline') and row.get('_deadline') == old.get('_deadline')
+               and len(signature & _title_signature(old.get('_title') or '')) >= 2
                for old in same_url):
             continue
         duplicates = False
@@ -4545,7 +4544,7 @@ def make_one_catalog(state: dict, rows: list[dict], *, dry_run=False) -> bool:
         title = review["title"]
         keywords = review["keywords"]
         # Validate the ranking again: expired/deleted posts cannot be published.
-        ranked = rank_posts(rows, query, keywords, facets=facets)
+        ranked = rank_posts(rows, query, keywords, facets=facets, as_of_dt=now)
 
 
 
@@ -4619,7 +4618,7 @@ def make_one_catalog(state: dict, rows: list[dict], *, dry_run=False) -> bool:
         # Explicit opt-in only. The production main workflow currently leaves
         # this unset. Durable checkpoints must be pushed before each send.
         direct_rows, conditional_rows = partition_reviewed_rows(
-            picked, facets, as_of=now.astimezone(KYIV).date())
+            picked, facets, as_of=now.astimezone(KYIV).date(), as_of_dt=now)
         if not direct_rows and not conditional_rows:
             mark_no_results(state, entry, 'none_verified')
             state["queue"].pop(0)
