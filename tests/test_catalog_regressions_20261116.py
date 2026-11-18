@@ -74,7 +74,7 @@ class RealNovemberCatalogRegressions(TestCase):
 
     def test_missing_title_does_not_collapse_distinct_calls_on_donor_url(self):
         from ngo_grants_ai import dedupe_programmes
-        root = "https://example.org/funding/grant-competition"
+        root = "https://example.org/funding"
         rows = [
             {"id": 900001, "_title": "", "_deadline": "2026-12-10",
              "text": "Programme Alpha: arts awards", "canonical_urls": [root]},
