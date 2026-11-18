@@ -63,8 +63,8 @@ class RealNovemberCatalogRegressions(TestCase):
     def test_live_pipeline_uses_clock_aware_filter_at_every_stage(self):
         """A resumed review and a public PDF must share the same exact cutoff."""
         import inspect
-        from ngo_grants_ai import process_request
-        source = inspect.getsource(process_request)
+        from ngo_grants_ai import make_one_catalog
+        source = inspect.getsource(make_one_catalog)
         self.assertIn(
             'rank_posts(rows, query, keywords, facets=facets, as_of_dt=now)',
             source)
