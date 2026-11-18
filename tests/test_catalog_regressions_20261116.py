@@ -60,6 +60,29 @@ class RealNovemberCatalogRegressions(TestCase):
         self.assertFalse(open_for_new_applicants(self.posts[3234],date(2026,11,16)))
         self.assertEqual(([],[]),partition_reviewed_rows(
             [self.make(3234,"2027-09-22")],None,as_of=date(2026,11,16)))
+    def test_live_pipeline_uses_clock_aware_filter_at_every_stage(self):
+        """A resumed review and a public PDF must share the same exact cutoff."""
+        import inspect
+        from ngo_grants_ai import process_request
+        source = inspect.getsource(process_request)
+        self.assertIn(
+            'rank_posts(rows, query, keywords, facets=facets, as_of_dt=now)',
+            source)
+        self.assertIn(
+            'picked, facets, as_of=now.astimezone(KYIV).date(), as_of_dt=now)',
+            source)
+
+    def test_missing_title_does_not_collapse_distinct_calls_on_donor_url(self):
+        from ngo_grants_ai import dedupe_programmes
+        root = "https://example.org/funding/grant-competition"
+        rows = [
+            {"id": 900001, "_title": "", "_deadline": "2026-12-10",
+             "text": "Programme Alpha: arts awards", "canonical_urls": [root]},
+            {"id": 900002, "_title": "", "_deadline": "2026-12-10",
+             "text": "Programme Beta: science awards", "canonical_urls": [root]},
+        ]
+        self.assertEqual(2, len(dedupe_programmes(rows)))
+
     def test_same_day_separate_clock_line_is_effective(self):
         post=self.posts[3513]
         deadline=date(2026,11,16)
