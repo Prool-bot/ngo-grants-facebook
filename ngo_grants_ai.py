@@ -2201,6 +2201,43 @@ def _other_population_exclusive(post: str, beneficiaries: list[str]) -> bool:
 
 
 
+def _broad_psychosocial_service_evidence(post: str, services: list[str]) -> str:
+    """Source-only evidence for an explicitly funded broad service category.
+
+    A generic health/social theme, beneficiary or donor name is never enough.
+    Absence of a narrow MHPSS term permits only CONDITIONAL AI review, not
+    confirmation that mental-health services are eligible.
+    """
+    if "psychosocial_services" not in services:
+        return ""
+    scope = _v562_fundable_scope(post)
+    if not scope:
+        return ""
+    lines = [line.strip() for line in scope.splitlines() if line.strip()]
+    delivery = re.compile(
+        r"(?:соціальн\w*|медичн\w*|психологічн\w*)\s+"
+        r"(?:та\s+(?:соціальн\w*|медичн\w*)\s+)?послуг\w*|"
+        r"(?:social|medical|healthcare|health)\s+services|"
+        r"(?:наданн\w*|розширенн\w*|доступ\w*\s+до)\s+"
+        r".{0,60}(?:послуг\w*|services)|"
+        r"(?:service\s+delivery|community\s+health\s+services)", re.I)
+    funds = re.compile(
+        r"фінансу\w*|підтриму\w*|грант\w*\s+(?:для|на)|"
+        r"напрям\w*\s+(?:фінансуван|підтримк)|"
+        r"fund(?:s|ing|ed)?|support(?:s|ed)?|eligible\s+(?:projects|activities)",
+        re.I)
+    research = re.compile(
+        r"досліджен\w*|scientific\s+research|research\s+(?:projects|grants)",
+        re.I)
+    for i, line in enumerate(lines):
+        fragment = " ".join(lines[max(0, i - 1):i + 2])[:500]
+        if (delivery.search(line) and funds.search(fragment)
+                and not research.search(fragment)
+                and not re.search(r"не\s+(?:фінансу|підтриму)|not\s+(?:funded|supported)", fragment, re.I)):
+            return fragment[:350]
+    return ""
+
+
 def _relaxed_subject_candidate(post: str, plan: dict, subject: str) -> tuple[bool, int]:
     """Secondary discovery pass for dependent requests (activity AND group).
 
@@ -2213,6 +2250,8 @@ def _relaxed_subject_candidate(post: str, plan: dict, subject: str) -> tuple[boo
     A vague program mentioning just the population is never enough.
     """
     services, beneficiaries = _intent_concepts(subject)
+    if services and not beneficiaries:
+        return (True, 5) if _broad_psychosocial_service_evidence(post, services) else (False, 0)
     if not (services and beneficiaries):
         return False, 0
     eligible, score = _funded_service_evidence(post, services)
@@ -2368,6 +2407,9 @@ def rank_posts(rows: list[dict], query: str, keywords: list[str] | dict,
         item = dict(row)
         item['_score'] = score
         item['_relaxed_subject'] = bool(relaxed)
+        item['_broad_service_scope'] = bool(
+            _broad_psychosocial_service_evidence(content, _intent_concepts(narrow)[0])
+            and not _funded_service_evidence(content, _intent_concepts(narrow)[0])[0])
         item['_deadline'] = deadline.isoformat() if deadline else None
         item['_rolling'] = rolling
         opening = application_window_starts_from_post(content)
@@ -2696,6 +2738,10 @@ def ai_classify(query: str, ranked: list[dict]) -> dict[int, str]:
         'або потрібен обов’язковий партнер, консорціум, досвід чи спеціальний '
         'тип заявника. Вважай цільову групу можливою тільки коли відсутня '
         'чітка заборона або несумісні вимоги до бенефіціарів. '
+        'Якщо джерело ЯВНО фінансує надання широкої категорії соціальних або '
+        'медичних послуг, і немає обмеження, що виключає запитану послугу, '
+        'допускай тільки CONDITIONAL: вузький тип MHPSS ще НЕ підтверджений. '
+        'Не вважай загальний сектор, назву донора або хештег доказом. '
         'REJECT: згадується лише цільова група без відповідної фінансованої '
         'діяльності; згадується психологія лише як приклад дослідницької '
         'теми; премія/стипендія фізособі замість проєкту ГО; допомога '
@@ -2728,6 +2774,8 @@ def ai_classify(query: str, ranked: list[dict]) -> dict[int, str]:
                 'applicant_evidence': context['applicant_evidence'][:340],
                 'funded_activity_evidence': _activity_evidence_excerpt(
                     row.get('text') or '', query)[:600],
+                'broad_service_evidence': _broad_psychosocial_service_evidence(
+                    row.get('text') or '', _intent_concepts(query)[0])[:350],
                 'activity_with_broader_population': bool(row.get('_relaxed_subject')),
                 'deadline': row.get('_deadline') or 'постійно',
                 'deadline_note': row.get('_deadline_note') or '',
@@ -2777,6 +2825,7 @@ def ai_classify(query: str, ranked: list[dict]) -> dict[int, str]:
                     _concept_hit(positive, SEARCH_CONCEPTS[k]) for k in beneficiaries))
                 if level == 'direct' and (guard == 'conditional' or
                                           not row.get('_applicant_direct_evidence', True)
+                                          or row.get('_broad_service_scope')
                                           or (services and not target_explicit)):
                     level_actual = 'conditional'
                 else:
