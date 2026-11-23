@@ -65,9 +65,9 @@ class RealNovemberCatalogRegressions(TestCase):
         import inspect
         from ngo_grants_ai import make_one_catalog
         source = inspect.getsource(make_one_catalog)
-        self.assertIn(
-            'rank_posts(rows, query, keywords, facets=facets, as_of_dt=now)',
-            source)
+        self.assertIn('as_of_dt=now, diagnostics=prefilter_qa', source)
+        self.assertIn('rank_posts(rows, query, keywords, facets=facets, as_of_dt=now)',
+                      source)
         self.assertIn(
             'picked, facets, as_of=now.astimezone(KYIV).date(), as_of_dt=now)',
             source)
@@ -82,6 +82,48 @@ class RealNovemberCatalogRegressions(TestCase):
              "text": "Programme Beta: science awards", "canonical_urls": [root]},
         ]
         self.assertEqual(2, len(dedupe_programmes(rows)))
+
+    def test_broad_service_needs_fundable_activity_not_sector_tag(self):
+        from ngo_grants_ai import (
+            _broad_psychosocial_service_evidence,
+            _relaxed_subject_candidate,
+        )
+        query = "Гранти на психологічну допомогу MHPSS"
+        positive = (
+            "Грант на соціальні послуги.\n"
+            "Що підтримується: фінансуються проєкти з надання соціальних послуг.\n"
+            "Хто може подаватися: громадські організації."
+        )
+        superficial = (
+            "Грант на розвиток.\n"
+            "Сектори економіки: соціальні послуги.\n"
+            "Що підтримується: розвиток бізнесу."
+        )
+        research = (
+            "Наукові гранти.\n"
+            "Фінансуються наукові дослідження соціальних послуг."
+        )
+        self.assertTrue(_broad_psychosocial_service_evidence(
+            positive, ["psychosocial_services"]))
+        self.assertFalse(_broad_psychosocial_service_evidence(
+            superficial, ["psychosocial_services"]))
+        self.assertFalse(_broad_psychosocial_service_evidence(
+            research, ["psychosocial_services"]))
+        self.assertEqual((True, 5), _relaxed_subject_candidate(
+            positive, {}, query))
+
+    def test_rank_diagnostic_counters_include_expired_deadlines(self):
+        from ngo_grants_ai import rank_posts
+        expired = {
+            "id": 90001,
+            "text": "Грант\nДедлайн: 01.01.2026\nГеографія: Україна"
+        }
+        audit = {}
+        rank_posts([expired], "", [], now=date(2026, 11, 23),
+                   diagnostics=audit)
+        self.assertEqual(audit["examined"], 1)
+        self.assertEqual(audit.get("expired_or_unknown_deadline"), 1)
+        self.assertEqual(audit["after_prefilter"], 0)
 
     def test_same_day_separate_clock_line_is_effective(self):
         post=self.posts[3513]
