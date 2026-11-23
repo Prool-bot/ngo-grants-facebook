@@ -2275,7 +2275,8 @@ def _relaxed_subject_candidate(post: str, plan: dict, subject: str) -> tuple[boo
 
 def rank_posts(rows: list[dict], query: str, keywords: list[str] | dict,
                now: date | None = None, facets: dict | None = None,
-               as_of_dt: datetime | None = None) -> list[dict]:
+               as_of_dt: datetime | None = None,
+               diagnostics: dict | None = None) -> list[dict]:
     """Two-stage retrieval: explicit-topic evidence first, applicant tier later.
 
 
@@ -2290,41 +2291,53 @@ def rank_posts(rows: list[dict], query: str, keywords: list[str] | dict,
         old_terms = variants(query, keywords)
         key = [term for term in old_terms if len(term) >= 3]
     selected = []
+    qa = Counter()
     for row in rows:
+        qa['examined'] += 1
         content = row.get('text') or ''
         if not content:
+            qa['empty_text'] += 1
             continue
         if not open_for_new_applicants(content, now):
+            qa['not_yet_open'] += 1
             continue
         narrow = (facets.get('detail') or facets.get('custom_sector') or '') if facets else query
         # Explicit OR-set of individual / informal / school-pupil applicants
         # cannot be satisfied by an institutional grant that only serves youth.
         if facets and not supports_explicit_open_applicants(content, facets.get('detail') or ''):
+            qa['explicit_applicant_modes'] += 1
             continue
         if narrow and not strict_topic_match(narrow, content):
+            qa['strict_topic'] += 1
             continue
         # For film searches by an NGO, reject individual-only and company-only
         # competitions BEFORE involving the AI (saves quota and false claims).
         if facets and facets["audience"] == "nonprofit" and film_request(narrow):
             if not _film_nonprofit_eligible(content):
+                qa['film_eligibility'] += 1
                 continue
         if _v56_needs_topic_gate(narrow) and not _v56_topic_match(content, narrow):
+            qa['specialised_topic'] += 1
             continue
         if facets is None and re.search(
                 r'\b(?:міжнародн\w*|з\s+усього\s+світу|worldwide|international)\b',
                 query.casefold()):
             if not _menu_geography_eligible(content, {'geo': 'international'}):
+                qa['international_geography'] += 1
                 continue
         relaxed, bonus = ((False, 0) if plan is None else
                           _relaxed_subject_candidate(content, plan, narrow))
         if facets is not None:
             if not _menu_geography_eligible(content, facets):
+                qa['geography'] += 1
                 continue
             # Hard evidence gates apply to EVERY structured query, including
             # requests with detailed text and permissive AI synonyms.
             if quality_status(content, facets) == 'reject':
+                qa['applicant_or_guard'] += 1
                 continue
             if not _menu_sector_eligible(content, facets) and not relaxed:
+                qa['sector'] += 1
                 continue
             # Applicant evidence was already checked with quality_status above.
             # Do not reapply the former permissive type heuristic here.
@@ -2332,16 +2345,20 @@ def rank_posts(rows: list[dict], query: str, keywords: list[str] | dict,
         deadline = effective_entry_deadline(content, deadline_from_post(content, now))
         rolling = not dates and ongoing_applications_from_post(content)
         if (deadline and deadline < now) or (not deadline and not rolling):
+            qa['expired_or_unknown_deadline'] += 1
             continue
         if same_day_deadline_expired(content, deadline, as_of_dt):
+            qa['same_day_cutoff'] += 1
             continue
         if (facets and facets.get("funding_format") == "grant_only"
                 and opportunity_kind(content)[0] == "conference_cfp"):
+            qa['funding_type'] += 1
             continue
         if plan is not None:
             requested_services, requested_people = _intent_concepts(narrow)
             if requested_services and requested_people:
                 if _other_population_exclusive(content, requested_people):
+                    qa['exclusive_beneficiaries'] += 1
                     continue
                 # A narrow service request may never be matched by an
                 # irrelevant scientific study or hypothetical project idea.
@@ -2353,6 +2370,7 @@ def rank_posts(rows: list[dict], query: str, keywords: list[str] | dict,
                     r'\bresearch\s+grants?\b)', opening, re.I))
                 has_funded_services, _ = _funded_service_evidence(content, requested_services)
                 if research_title and not has_funded_services:
+                    qa['research_only'] += 1
                     continue
             match, score = _candidate_matches_subject(content, plan)
             if not match and ((facets and (facets.get('detail') or facets.get('custom_sector')))
@@ -2378,6 +2396,7 @@ def rank_posts(rows: list[dict], query: str, keywords: list[str] | dict,
                 match = True
                 score = max(score, bonus)
             if not match:
+                qa['semantic_topic'] += 1
                 continue
             # Retain enough information for AI to distinguish direct and
             # indirect thematic matches. Only an explicit matching activity
@@ -2386,6 +2405,7 @@ def rank_posts(rows: list[dict], query: str, keywords: list[str] | dict,
             lower = unicodedata.normalize('NFKC', content).lower()
             scores = [(3 if t in theme_tokens(query) else 1) for t in key if t in lower]
             if not scores:
+                qa['keyword_mismatch'] += 1
                 continue
             score = sum(scores)
         applicant = facets['audience'] if facets else plan.get('audience', 'any') if plan else 'any'
@@ -2398,6 +2418,7 @@ def rank_posts(rows: list[dict], query: str, keywords: list[str] | dict,
                     or (not facets and plan and plan.get('topic_groups') and
                         len(_specific_terms(query)) >= 2 and
                         not plan.get('applicant_required'))):
+                qa['insufficient_applicant'] += 1
                 continue
             score -= 2
         else:
@@ -2435,7 +2456,14 @@ def rank_posts(rows: list[dict], query: str, keywords: list[str] | dict,
         selected.append(item)
     selected.sort(key=lambda item: (-item['_score'], -len(item.get('text') or ''),
                                     item['_deadline'] or '9999-12-31', -item['id']))
-    return dedupe_programmes(selected)
+    ranked = dedupe_programmes(selected)
+    qa['before_deduplication'] = len(selected)
+    qa['duplicate_programmes'] = len(selected) - len(ranked)
+    qa['after_prefilter'] = len(ranked)
+    if diagnostics is not None:
+        diagnostics.clear()
+        diagnostics.update(dict(qa))
+    return ranked
 
 
 
