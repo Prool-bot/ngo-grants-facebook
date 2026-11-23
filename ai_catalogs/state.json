@@ -1626,6 +1626,7 @@
     272839064,
     2297633095639260,
     2343529905919942,
+    2348844429150867,
     2497259707351563,
     2504323132886705,
     2524199553564298
@@ -1758,6 +1759,29 @@
       },
       "published_on": "2026-11-17",
       "channel_url": "https://t.me/ngo_grants/3993"
+    },
+    {
+      "id": 2348844429150867,
+      "topic": "Гранти на психологічну допомогу та психосоціальну підтримку, MHPSS, Mental Health, психічне здоров'я, ментальне здоров'я; для некомерційних організацій; сфери: Соціальна та гуманітарна сфера, Медицина; в Україні",
+      "reason": "none_verified",
+      "engine_version": 11,
+      "checked_on": "2026-11-23",
+      "status": "published",
+      "facets": {
+        "audience": "nonprofit",
+        "sectors": [
+          "social",
+          "medical"
+        ],
+        "custom_sector": "",
+        "geo": "ukraine",
+        "region": "",
+        "detail": "Гранти на психологічну допомогу та психосоціальну підтримку, MHPSS, Mental Health, психічне здоров'я, ментальне здоров'я",
+        "applicant_role": "lead",
+        "funding_format": "grant_only"
+      },
+      "published_on": "2026-11-23",
+      "channel_url": "https://t.me/ngo_grants/4124"
     }
   ],
   "v59_deliveries": {
