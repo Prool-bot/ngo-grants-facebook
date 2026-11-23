@@ -133,7 +133,7 @@ MIN_GAP_HOURS = 2
 # Review every candidate over successive scheduled runs to preserve free AI credits.
 AI_REVIEW_BATCH_SIZE = 12
 AI_REVIEW_BATCHES_PER_RUN = 3
-SEARCH_ENGINE_VERSION = 11  # NGO Grants AI v5.7: universal quality guard
+SEARCH_ENGINE_VERSION = 12  # Per-request quality telemetry and broad-service conditional review
 # Public status messages are independent of the 3-PDF/day quota.
 MAX_NO_RESULTS_PER_DAY = 3
 NO_RESULTS_REPEAT_DAYS = 7
@@ -4598,9 +4598,16 @@ def make_one_catalog(state: dict, rows: list[dict], *, dry_run=False) -> bool:
             title = keywords.get('title', query[:100])
         else:
             title, keywords = ai_expand(query)
-        ranked = rank_posts(rows, query, keywords, facets=facets, as_of_dt=now)
+        prefilter_qa = {}
+        ranked = rank_posts(rows, query, keywords, facets=facets,
+                            as_of_dt=now, diagnostics=prefilter_qa)
         if not ranked:
-            mark_no_results(state, entry, 'no_candidate')
+            outcome = mark_no_results(state, entry, 'no_candidate')
+            outcome["quality_diagnostics"] = {"prefilter": prefilter_qa,
+                                              "ai_reviewed": 0, "ai_selected": 0,
+                                              "final_results": 0}
+            print("CATALOG_QA_COUNTS=" + json.dumps(
+                outcome["quality_diagnostics"], sort_keys=True))
             state["queue"].pop(0)
             state.pop("ai_review", None)
             return True
@@ -4613,6 +4620,8 @@ def make_one_catalog(state: dict, rows: list[dict], *, dry_run=False) -> bool:
             "offset": 0,
             "selected_ids": [],
             "selected_levels": {},
+            "quality_prefilter": prefilter_qa,
+            "ai_reviewed": 0,
         }
         state["ai_review"] = review
         if not preview_mode:
@@ -4638,6 +4647,7 @@ def make_one_catalog(state: dict, rows: list[dict], *, dry_run=False) -> bool:
         batch = [lookup[i] for i in segment if i in lookup]
         if batch:
             selected = ai_classify(query, batch)
+            review["ai_reviewed"] = int(review.get("ai_reviewed", 0)) + len(batch)
             review.setdefault("selected_levels", {}).update(
                 {str(i): level for i, level in selected.items()})
             review["selected_ids"].extend(i for i in selected
@@ -4669,6 +4679,15 @@ def make_one_catalog(state: dict, rows: list[dict], *, dry_run=False) -> bool:
     ])
     picked.sort(key=lambda row: (row["_relevance"] != "direct", -row["_score"],
                                  row.get("_deadline") or "9999-12-31"))
+    quality_counts = {
+        "prefilter": review.get("quality_prefilter", {}),
+        "initial_candidates": len(candidate_ids),
+        "ai_reviewed": int(review.get("ai_reviewed", 0)),
+        "ai_selected": len(selected_ids),
+        "post_review_valid": len(picked),
+        "discarded_after_review": len(selected_ids) - len(picked),
+    }
+    print("CATALOG_QA_COUNTS=" + json.dumps(quality_counts, sort_keys=True))
     # v5.9 isolated preview. Never publish or mutate order state in this path.
     # Intentionally opt-in to preserve the operational v5.7/v5.8 contract.
     if preview_mode:
@@ -4696,8 +4715,11 @@ def make_one_catalog(state: dict, rows: list[dict], *, dry_run=False) -> bool:
         # this unset. Durable checkpoints must be pushed before each send.
         direct_rows, conditional_rows = partition_reviewed_rows(
             picked, facets, as_of=now.astimezone(KYIV).date(), as_of_dt=now)
+        quality_counts["final_direct"] = len(direct_rows)
+        quality_counts["final_conditional"] = len(conditional_rows)
         if not direct_rows and not conditional_rows:
-            mark_no_results(state, entry, 'none_verified')
+            outcome = mark_no_results(state, entry, 'none_verified')
+            outcome["quality_diagnostics"] = quality_counts
             state["queue"].pop(0)
             state.pop("ai_review", None)
             return True
@@ -4755,6 +4777,7 @@ def make_one_catalog(state: dict, rows: list[dict], *, dry_run=False) -> bool:
         ).hexdigest()
         meta = {
             "title": title, "query": query, "facets": facets,
+            "quality_diagnostics": quality_counts,
             "post_ids": [int(row["id"]) for _, group, _ in groups for row in group],
             "valid_until": (
                 (now.astimezone(KYIV).date() + timedelta(days=30)).isoformat()
@@ -4787,7 +4810,8 @@ def make_one_catalog(state: dict, rows: list[dict], *, dry_run=False) -> bool:
         finalize_v59_order(state, entry, manifest, message_ids, now)
         return True
     if not picked:
-        mark_no_results(state, entry, 'none_verified')
+        outcome = mark_no_results(state, entry, 'none_verified')
+        outcome["quality_diagnostics"] = quality_counts
         state["queue"].pop(0)
         state.pop("ai_review", None)
         return True
