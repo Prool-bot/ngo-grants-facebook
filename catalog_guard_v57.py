@@ -44,6 +44,9 @@ _PERSON = re.compile(
     r"студент\w*|школяр\w*|учн\w*|журналіст\w*|"
     r"дослідник\w*|науковц\w*|митц\w*|художник\w*|"
     r"режисер\w*|автор\w*|фотограф\w*|"
+    r"куратор\w*|архітектор\w*|скульптор\w*|дизайнер\w*|"
+    r"композитор\w*|музикант\w*|перформер\w*|"
+    r"ремісник\w*|майстр\w*|письменник\w*|"
     r"ветеран\w*|ветеранк\w*|individuals?\b|"
     r"artists?\b|students?\b|researchers?\b)", re.I)
 _MUNICIPAL = re.compile(
@@ -190,7 +193,15 @@ def applicant_status(post: str, facets: dict) -> str:
     legal = bool(re.search(r"юридичн\w*\s+особ|legal\s+entit\w*", positive))
     no_ngo = bool(_NGO.search(negative))
     no_company = bool(_COMPANY.search(negative))
-    no_human = bool(_PERSON.search(negative))
+    # An exclusion of one subgroup (e.g. enrolled students) does NOT mean
+    # that all individual artists/researchers are prohibited from applying.
+    # Reject individuals only on an explicit category-wide prohibition.
+    no_human = bool(re.search(
+        r"(?:не\s+допуска\w*|не\s+мож\w*|not\s+eligible|ineligible)"
+        r".{0,85}(?:фізичн\w*\s+особ|individual\s+applicants?)|"
+        r"(?:фізичн\w*\s+особ|individual\s+applicants?)"
+        r".{0,85}(?:не\s+допуска\w*|не\s+мож\w*|not\s+eligible|ineligible)",
+        negative, re.I))
 
     if category == "nonprofit":
         # "Legal entities and FOP" in a jobs/business programme does not
