@@ -73,7 +73,10 @@ def partition_reviewed_rows(rows: list[dict], facets: dict | None,
         # A funding-only request cannot receive an exhibition or paid open call
         # without affirmative project-grant evidence.
         if (facets and facets.get("funding_format") == "grant_only"
-                and support_kind == "open_call"):
+                and support_kind in ("open_call", "award", "scholarship",
+                                     "fellowship", "residency")):
+            # These are valuable for the "any opportunity" menu, but a prize,
+            # study stipend or non-cash exhibition is not a project grant.
             continue
         warnings = qualification_warnings(row.get("text") or "", facets)
         # Being a qualified artist, PhD candidate or student is an eligibility
