@@ -133,14 +133,14 @@ class UniquenessTests(unittest.TestCase):
 
 
 class EligibilityAndTypeTests(unittest.TestCase):
-    def test_unverified_qualified_individual_is_conditional(self):
+    def test_individual_qualification_does_not_change_right_to_apply(self):
         facets = {"audience": "individual", "sectors": ["education"]}
         self.assertTrue(qualification_warnings(ASPRS_A, facets))
         direct, conditional = partition_reviewed_rows(
             [row(3623, ASPRS_A, "2026-12-01")], facets, as_of=TODAY)
-        self.assertFalse(direct)
-        self.assertEqual(1, len(conditional))
-        self.assertIn("членство не підтверджене", conditional[0]["_conditional_reason"])
+        self.assertEqual(1, len(direct))
+        self.assertFalse(conditional)
+        self.assertIn("членство не підтверджене", direct[0]["_funding_warning"])
 
     def test_restrictive_naf_degree_and_job_requirements(self):
         facets = {"audience": "individual", "sectors": ["education"]}
@@ -195,9 +195,9 @@ class ArchivedNovember2026RegressionTests(unittest.TestCase):
         self.assertEqual(1, len(dedupe_programmes([a, b])))
         facets = {"audience": "individual", "sectors": ["education", "it", "social"]}
         direct, conditional = partition_reviewed_rows([a, b], facets, as_of=TODAY)
-        self.assertFalse(direct)
-        self.assertEqual(1, len(conditional))
-        self.assertTrue(conditional[0]["_conditional_reason"])
+        self.assertEqual(1, len(direct))
+        self.assertFalse(conditional)
+        self.assertIn("членство не підтверджене", direct[0]["_funding_warning"])
 
     def test_real_meos_type_ushmm_and_naf_qualification(self):
         self.assertEqual("conference_cfp",
