@@ -214,30 +214,30 @@ def funding_profile(post: str) -> tuple[str, str, tuple[str, ...]]:
     This never claims donor eligibility or live funding. In particular,
     a paid exhibition application is not relabelled as a cash grant.
     """
-    source = re.sub(r"https?://\\S+|#[^\\s]+", " ", str(post or "")).casefold()
-    opening = "\\n".join(source.splitlines()[:12])
+    source = re.sub(r"https?://\S+|#[^\s]+", " ", str(post or "")).casefold()
+    opening = "\n".join(source.splitlines()[:12])
     grant = bool(re.search(
-        r"(?:мікрогрант\\w*|грант(?:и|у|ів|ом|ова|овий)?\\b|"
-        r"grant(?:s| funding)?\\b)", opening))
+        r"(?:мікрогрант\w*|грант(?:и|у|ів|ом|ова|овий)?\b|"
+        r"grant(?:s| funding)?\b)", opening))
     award = bool(re.search(
-        r"\\b(?:award|prize)\\b|премі\\w*|нагород\\w*", opening))
+        r"\b(?:award|prize)\b|премі\w*|нагород\w*", opening))
     fellowship = bool(re.search(r"fellowship|феллоушип", opening))
-    scholarship = bool(re.search(r"scholarship|стипенді\\w*", opening))
-    residency = bool(re.search(r"residen(?:cy|cies)|резиденці\\w*", opening))
+    scholarship = bool(re.search(r"scholarship|стипенді\w*", opening))
+    residency = bool(re.search(r"residen(?:cy|cies)|резиденці\w*", opening))
     exhibition = bool(re.search(
-        r"\\bopen call\\b|виставк\\w*|експозиці\\w*|артбук|"
-        r"галере\\w*|фестивал\\w*", opening))
+        r"\bopen call\b|виставк\w*|експозиці\w*|артбук|"
+        r"галере\w*|фестивал\w*", opening))
     explicit_cash = bool(re.search(
-        r"(?:\\bgrant\\b|мікрогрант\\w*|грошов\\w*\\s+грант|"
-        r"фінансуван\\w*\\s+(?:проєкт|проект)|"
-        r"\\b(?:usd|eur)\\s*[\\d,]+|[$€£]\\s*[\\d,.]+)",
+        r"(?:\bgrant\b|мікрогрант\w*|грошов\w*\s+грант|"
+        r"фінансуван\w*\s+(?:проєкт|проект)|"
+        r"\b(?:usd|eur)\s*[\d,]+|[$€£]\s*[\d,.]+)",
         source[:2600]))
     paid = bool(re.search(
-        r"(?:внесок\\s+за\\s+(?:подач|поданн|участ)|"
-        r"реєстраційн\\w*\\s+внесок|вартіст\\w*\\s+участ|"
-        r"плата\\s+за\\s+(?:подач|поданн)|"
-        r"application\\s+fee|submission\\s+fee|entry\\s+fee|"
-        r"membership\\s+fee)", source))
+        r"(?:внесок\s+за\s+(?:подач|поданн|участ)|"
+        r"реєстраційн\w*\s+внесок|вартіст\w*\s+участ|"
+        r"плата\s+за\s+(?:подач|поданн)|"
+        r"application\s+fee|submission\s+fee|entry\s+fee|"
+        r"membership\s+fee)", source))
     warnings = []
     if paid:
         warnings.append("Участь або подання платні: перевірте суму внеску.")
