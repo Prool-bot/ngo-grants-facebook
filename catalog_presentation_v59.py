@@ -88,12 +88,19 @@ def partition_reviewed_rows(rows: list[dict], facets: dict | None,
             x for x in (previous_warning, information) if x)
         mandatory_partner = institutional_application_dependency(row.get("text") or "")
         source_missing = missing_actionable_source(row.get("text") or "")
-        if kind == "conference_cfp" or mandatory_partner or source_missing:
+        funding_unconfirmed = bool(
+            facets and facets.get("funding_format") == "grant_only"
+            and support_kind == "other"
+        )
+        if (kind == "conference_cfp" or mandatory_partner
+                or source_missing or funding_unconfirmed):
             level = "conditional"
             previous_reason = str(row.get("_conditional_reason") or "").strip()
             reasons = [
                 kind_label if kind == "conference_cfp" else "",
                 mandatory_partner,
+                ("Не підтверджено саме проєктне грантове фінансування.")
+                if funding_unconfirmed else "",
                 ("Не знайдено дієвого посилання на правила організатора; "
                  "право подання не підтверджене першоджерелом.")
                 if source_missing else "",
