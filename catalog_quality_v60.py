@@ -208,6 +208,58 @@ def qualification_warnings(post: str, facets: dict | None) -> tuple[str, ...]:
 
 
 
+def funding_profile(post: str) -> tuple[str, str, tuple[str, ...]]:
+    """Evidence-based description of the support, separate from applicant tier.
+
+    This never claims donor eligibility or live funding. In particular,
+    a paid exhibition application is not relabelled as a cash grant.
+    """
+    source = re.sub(r"https?://\\S+|#[^\\s]+", " ", str(post or "")).casefold()
+    opening = "\\n".join(source.splitlines()[:12])
+    grant = bool(re.search(
+        r"(?:мікрогрант\\w*|грант(?:и|у|ів|ом|ова|овий)?\\b|"
+        r"grant(?:s| funding)?\\b)", opening))
+    award = bool(re.search(
+        r"\\b(?:award|prize)\\b|премі\\w*|нагород\\w*", opening))
+    fellowship = bool(re.search(r"fellowship|феллоушип", opening))
+    scholarship = bool(re.search(r"scholarship|стипенді\\w*", opening))
+    residency = bool(re.search(r"residen(?:cy|cies)|резиденці\\w*", opening))
+    exhibition = bool(re.search(
+        r"\\bopen call\\b|виставк\\w*|експозиці\\w*|артбук|"
+        r"галере\\w*|фестивал\\w*", opening))
+    explicit_cash = bool(re.search(
+        r"(?:\\bgrant\\b|мікрогрант\\w*|грошов\\w*\\s+грант|"
+        r"фінансуван\\w*\\s+(?:проєкт|проект)|"
+        r"\\b(?:usd|eur)\\s*[\\d,]+|[$€£]\\s*[\\d,.]+)",
+        source[:2600]))
+    paid = bool(re.search(
+        r"(?:внесок\\s+за\\s+(?:подач|поданн|участ)|"
+        r"реєстраційн\\w*\\s+внесок|вартіст\\w*\\s+участ|"
+        r"плата\\s+за\\s+(?:подач|поданн)|"
+        r"application\\s+fee|submission\\s+fee|entry\\s+fee|"
+        r"membership\\s+fee)", source))
+    warnings = []
+    if paid:
+        warnings.append("Участь або подання платні: перевірте суму внеску.")
+    if award:
+        kind, label = "award", "Мистецька чи наукова премія / нагорода"
+    elif fellowship:
+        kind, label = "fellowship", "Стипендіальна / дослідницька програма (fellowship)"
+    elif scholarship:
+        kind, label = "scholarship", "Стипендія на навчання чи дослідження"
+    elif residency:
+        kind, label = "residency", "Мистецька або професійна резиденція"
+    elif grant:
+        kind, label = "grant", "Грантова підтримка"
+    elif exhibition:
+        kind, label = "open_call", "Виставка / конкурс / open call; грошовий грант не підтверджено"
+        if not explicit_cash:
+            warnings.append("Грошовий грант за умовами цього конкурсу не підтверджено.")
+    else:
+        kind, label = "other", "Інша можливість; формат фінансування потребує перевірки"
+    return kind, label, tuple(warnings)
+
+
 def open_for_new_applicants(post: str, as_of: date) -> bool:
     """Fail closed for a plainly unannounced/upcoming submission window.
 
