@@ -2771,7 +2771,7 @@
       1883,
       1982
     ],
-    "offset": 72,
+    "offset": 108,
     "selected_ids": [
       3511,
       3664,
@@ -2825,7 +2825,31 @@
       3672,
       3332,
       2653,
-      3337
+      3337,
+      2479,
+      2726,
+      3376,
+      3029,
+      3334,
+      3593,
+      3667,
+      2646,
+      3539,
+      1001,
+      1651,
+      759,
+      3545,
+      3486,
+      2674,
+      3483,
+      3926,
+      3711,
+      1974,
+      3066,
+      4052,
+      3553,
+      3707,
+      3992
     ],
     "selected_levels": {
       "3511": "conditional",
@@ -2880,7 +2904,31 @@
       "3672": "direct",
       "3332": "conditional",
       "2653": "conditional",
-      "3337": "conditional"
+      "3337": "conditional",
+      "2479": "direct",
+      "2726": "direct",
+      "3376": "direct",
+      "3029": "conditional",
+      "3334": "conditional",
+      "3593": "direct",
+      "3667": "direct",
+      "2646": "direct",
+      "3539": "direct",
+      "1001": "direct",
+      "1651": "direct",
+      "759": "direct",
+      "3545": "direct",
+      "3486": "conditional",
+      "2674": "conditional",
+      "3483": "direct",
+      "3926": "direct",
+      "3711": "direct",
+      "1974": "direct",
+      "3066": "direct",
+      "4052": "direct",
+      "3553": "direct",
+      "3707": "conditional",
+      "3992": "conditional"
     },
     "quality_prefilter": {
       "examined": 3226,
@@ -2893,6 +2941,6 @@
       "duplicate_programmes": 16,
       "after_prefilter": 138
     },
-    "ai_reviewed": 72
+    "ai_reviewed": 108
   }
 }
