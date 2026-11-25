@@ -39,6 +39,69 @@ class TestPartition(unittest.TestCase):
                                      FACETS,as_of=TODAY)
         self.assertEqual(1,len(d));self.assertFalse(c)
 
+    def test_professional_prerequisite_does_not_make_artist_indirect(self):
+        facets = {"audience": "individual", "sectors": ["culture"],
+                  "funding_format": "any"}
+        post = (
+            "Міжнародний конкурс для художників.\n"
+            "👥 ХТО МОЖЕ ПОДАВАТИСЯ: художники віком від 21 року, "
+            "які мають професійне портфоліо.\n"
+            "📅 ДЕДЛАЙН: 31 грудня 2026 року.\n"
+            "🔗 https://example.org/call"
+        )
+        d,c = partition_reviewed_rows(
+            [row(101, text=post)], facets, as_of=TODAY)
+        self.assertEqual([101], [x["id"] for x in d])
+        self.assertFalse(c)
+        self.assertIn("Професійна спеціалізація", d[0]["_funding_warning"])
+
+    def test_required_institutional_pi_is_conditional_not_personal_degree(self):
+        facets = {"audience": "individual", "sectors": ["education"]}
+        post = (
+            "Дослідницький грант для студентів.\n"
+            "👥 ХТО МОЖЕ ПОДАВАТИСЯ: студенти PhD.\n"
+            "Один викладач має виступити інституційним Principal Investigator (PI).\n"
+            "🔗 https://example.org/grants"
+        )
+        d,c = partition_reviewed_rows(
+            [row(102, text=post)], facets, as_of=TODAY)
+        self.assertFalse(d)
+        self.assertEqual([102], [x["id"] for x in c])
+        self.assertIn("інституційний PI", c[0]["_conditional_reason"])
+
+    def test_missing_link_stub_is_conditional_not_confirmed(self):
+        facets = {"audience": "individual", "sectors": ["education"]}
+        post = (
+            "Освітній мінігрант.\n"
+            "👥 Хто може податися: студенти університетів.\n"
+            "🔗 Офіційна сторінка програми та подача"
+        )
+        d,c = partition_reviewed_rows(
+            [row(103, text=post)], facets, as_of=TODAY)
+        self.assertFalse(d)
+        self.assertEqual([103], [x["id"] for x in c])
+        self.assertIn("посилання", c[0]["_conditional_reason"])
+
+    def test_paid_exhibition_is_labeled_non_grant_and_blocked_for_grant_only(self):
+        post = (
+            "WILD AT HEART — міжнародний open call для художниць.\n"
+            "Відібрані учасниці беруть участь у виставці.\n"
+            "👥 ХТО МОЖЕ ПОДАВАТИСЯ: сучасні художниці від 18 років.\n"
+            "Вартість участі: $45 за подання заявки.\n"
+            "🔗 https://example.org/open-call"
+        )
+        facets = {"audience": "individual", "sectors": ["culture"],
+                  "funding_format": "any"}
+        d,c = partition_reviewed_rows(
+            [row(104, text=post)], facets, as_of=TODAY)
+        self.assertEqual([104], [x["id"] for x in d])
+        self.assertFalse(c)
+        self.assertEqual("open_call", d[0]["_support_type"])
+        self.assertIn("платні", d[0]["_funding_warning"])
+        strict = dict(facets, funding_format="grant_only")
+        self.assertEqual(([], []), partition_reviewed_rows(
+            [row(104, text=post)], strict, as_of=TODAY))
+
     def test_no_direct_still_keeps_conditional(self):
         d,c=partition_reviewed_rows(
             [row(9,"conditional",_conditional_reason="Потрібен консорціум.")],
