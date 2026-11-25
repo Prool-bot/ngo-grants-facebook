@@ -260,6 +260,33 @@ def funding_profile(post: str) -> tuple[str, str, tuple[str, ...]]:
     return kind, label, tuple(warnings)
 
 
+def institutional_application_dependency(post: str) -> str:
+    """A compulsory institutional PI or host is not an ordinary personal CV criterion."""
+    text = str(post or "").casefold()
+    lines = text.splitlines()
+    for index, line in enumerate(lines):
+        if re.search(r"\b(?:pi|principal\s+investigator)\b|інституційн\w*\s+керівник", line, re.I):
+            context = " ".join(lines[max(0, index - 1):index + 2])
+            if re.search(r"інституційн\w*|\binstitutional\b|університет\w*", context, re.I) and re.search(
+                    r"має\s+виступити|необхідн\w*|обов.язков\w*|потрібн\w*|"
+                    r"must|required|mandatory", context, re.I):
+                return "Потрібен обов'язковий інституційний PI або приймаюча установа."
+    return ""
+
+
+def missing_actionable_source(post: str) -> bool:
+    """Only flag an explicit link placeholder with no usable link or domain."""
+    text = str(post or "")
+    if re.search(r"https?://\S+|\b(?:[a-z0-9-]+\.)+(?:org|com|gov|edu|net|ua|eu|int)\b",
+                 text, re.I):
+        return False
+    return bool(re.search(
+        r"(?:🔗\s*(?:деталі\s+гранту|офіційна\s+сторінка|"
+        r"подати\s+заявку|подати\s+заявку\s+та\s+дізнатися)|"
+        r"офіційн\w*\s+сторінк\w*\s+програм\w*\s+та\s+подач\w*)",
+        text, re.I))
+
+
 def open_for_new_applicants(post: str, as_of: date) -> bool:
     """Fail closed for a plainly unannounced/upcoming submission window.
 
