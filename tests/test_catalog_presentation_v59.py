@@ -118,6 +118,39 @@ class TestPartition(unittest.TestCase):
         self.assertEqual(([], []), partition_reviewed_rows(
             [row(105, text=post)], strict, as_of=TODAY))
 
+    def test_actual_november_artist_call_is_individual_and_paid(self):
+        import json
+        from pathlib import Path
+        archive = Path(__file__).resolve().parents[1] / "archive/telegram/months/2026-11.json"
+        posts = {int(x["id"]): x["text"] for x in json.loads(archive.read_text("utf-8"))}
+        facets = {"audience": "individual", "sectors": ["culture"],
+                  "funding_format": "any"}
+        for ident, expected in ((3654, "open_call"), (3671, "award")):
+            d,c = partition_reviewed_rows(
+                [row(ident, text=posts[ident], deadline="2026-12-21")],
+                facets, as_of=date(2026, 11, 25))
+            self.assertEqual([ident], [x["id"] for x in d], ident)
+            self.assertFalse(c)
+            self.assertEqual(expected, d[0]["_support_type"])
+        d,c = partition_reviewed_rows(
+            [row(3654, text=posts[3654], deadline="2026-12-21")],
+            facets, as_of=date(2026, 11, 25))
+        self.assertIn("платні", d[0]["_funding_warning"])
+
+    def test_actual_short_education_post_needs_primary_source(self):
+        import json
+        from pathlib import Path
+        archive = Path(__file__).resolve().parents[1] / "archive/telegram/months/2026-08.json"
+        posts = {int(x["id"]): x["text"] for x in json.loads(archive.read_text("utf-8"))}
+        facets = {"audience": "individual", "sectors": ["education"],
+                  "funding_format": "any"}
+        d,c = partition_reviewed_rows(
+            [row(1982, text=posts[1982], deadline="2026-12-29")],
+            facets, as_of=date(2026, 11, 25))
+        self.assertFalse(d)
+        self.assertEqual([1982], [x["id"] for x in c])
+        self.assertIn("посилання", c[0]["_conditional_reason"])
+
     def test_no_direct_still_keeps_conditional(self):
         d,c=partition_reviewed_rows(
             [row(9,"conditional",_conditional_reason="Потрібен консорціум.")],
