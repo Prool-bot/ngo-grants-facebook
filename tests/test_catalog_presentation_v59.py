@@ -102,6 +102,22 @@ class TestPartition(unittest.TestCase):
         self.assertEqual(([], []), partition_reviewed_rows(
             [row(104, text=post)], strict, as_of=TODAY))
 
+    def test_grant_only_rejects_study_stipend_not_all_opportunities(self):
+        post = (
+            "Стипендія PhD для молодих дослідників.\n"
+            "👥 Хто може подаватися: студенти PhD з усіх країн.\n"
+            "Фінансування: щомісячна стипендія на навчання.\n"
+            "🔗 https://example.org/scholarship"
+        )
+        broad = {"audience": "individual", "sectors": ["education"],
+                 "funding_format": "any"}
+        d, c = partition_reviewed_rows([row(105, text=post)], broad,
+                                       as_of=TODAY)
+        self.assertEqual([105], [item["id"] for item in d])
+        strict = dict(broad, funding_format="grant_only")
+        self.assertEqual(([], []), partition_reviewed_rows(
+            [row(105, text=post)], strict, as_of=TODAY))
+
     def test_no_direct_still_keeps_conditional(self):
         d,c=partition_reviewed_rows(
             [row(9,"conditional",_conditional_reason="Потрібен консорціум.")],
