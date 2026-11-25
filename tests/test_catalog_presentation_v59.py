@@ -4,8 +4,9 @@ from catalog_presentation_v59 import partition_reviewed_rows
 
 TODAY = date(2026, 11, 7)
 FACETS = {"audience": "nonprofit", "funding_format": "grant_only", "sectors": ["social"]}
-POST = ("ХТО МОЖЕ ПОДАВАТИСЯ: громадські організації.\n"
-        "ЩО ПІДТРИМУЄТЬСЯ: соціальні послуги.")
+POST = ("Грантова програма на соціальні послуги.\n"
+        "ХТО МОЖЕ ПОДАВАТИСЯ: громадські організації.\n"
+        "ЩО ПІДТРИМУЄТЬСЯ: фінансування проєктів соціальних послуг.")
 def row(ident, level="direct", deadline="2026-12-01", **kwargs):
     return {"id":ident, "text":POST, "_relevance":level,
             "_deadline":deadline, **kwargs}
