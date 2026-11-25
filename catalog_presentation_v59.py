@@ -10,7 +10,7 @@ from catalog_guard_v57 import quality_status
 from catalog_precision_guard import supports_explicit_open_applicants, same_grant_round
 from catalog_quality_v60 import (effective_entry_deadline, same_day_deadline_expired,
                                  qualification_warnings, opportunity_kind,
-                                 open_for_new_applicants)
+                                 funding_profile, open_for_new_applicants)
 
 
 def partition_reviewed_rows(rows: list[dict], facets: dict | None,
@@ -60,17 +60,32 @@ def partition_reviewed_rows(rows: list[dict], facets: dict | None,
         if guard == "conditional" and level == "direct":
             level = "conditional"
         kind, kind_label = opportunity_kind(row.get("text") or "")
+        support_kind, support_label, support_warnings = funding_profile(
+            row.get("text") or "")
         row["_opportunity_type"] = kind
         row["_opportunity_label"] = kind_label
+        row["_support_type"] = support_kind
+        row["_support_label"] = support_label
         if kind == "conference_cfp" and facets and facets.get("funding_format") == "grant_only":
             continue
+        # A funding-only request cannot receive an exhibition or paid open call
+        # without affirmative project-grant evidence.
+        if (facets and facets.get("funding_format") == "grant_only"
+                and support_kind == "open_call"):
+            continue
         warnings = qualification_warnings(row.get("text") or "", facets)
-        if warnings or kind == "conference_cfp":
+        # Being a qualified artist, PhD candidate or student is an eligibility
+        # requirement, NOT a change in the legal right to apply personally.
+        # Keep qualification warnings visible without forcing CONDITIONAL.
+        previous_warning = str(row.get("_funding_warning") or "").strip()
+        information = " ".join(support_warnings + warnings)
+        row["_funding_warning"] = " ".join(
+            x for x in (previous_warning, information) if x)
+        if kind == "conference_cfp":
             level = "conditional"
             previous_reason = str(row.get("_conditional_reason") or "").strip()
-            details = " ".join(warnings + ((kind_label,) if kind == "conference_cfp" else ()))
             row["_conditional_reason"] = " ".join(
-                x for x in (previous_reason, details) if x
+                x for x in (previous_reason, kind_label) if x
             )
         accepted.append(row)
         row["_relevance"] = level
