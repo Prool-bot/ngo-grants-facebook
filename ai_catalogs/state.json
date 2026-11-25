@@ -2,26 +2,7 @@
   "schema_version": 1,
   "last_update_id": 272838698,
   "users_days": {},
-  "queue": [
-    {
-      "id": 2433977516218212,
-      "topic": "Симфонічний концерт і фондовий запис; для некомерційних організацій; сфери: Культура та мистецтво, Освіта та наука, Класична симфонічна музика; міжнародні",
-      "requested_at": "2026-11-25T11:04:31.620Z",
-      "facets": {
-        "audience": "nonprofit",
-        "sectors": [
-          "culture",
-          "education"
-        ],
-        "custom_sector": "Класична симфонічна музика",
-        "geo": "international",
-        "region": "",
-        "detail": "Симфонічний концерт і фондовий запис",
-        "applicant_role": "either",
-        "funding_format": "any"
-      }
-    }
-  ],
+  "queue": [],
   "published": [
     {
       "id": 272838672,
@@ -1942,6 +1923,51 @@
       },
       "published_on": "2026-11-23",
       "channel_url": "https://t.me/ngo_grants/4124"
+    },
+    {
+      "id": 2433977516218212,
+      "topic": "Симфонічний концерт і фондовий запис; для некомерційних організацій; сфери: Культура та мистецтво, Освіта та наука, Класична симфонічна музика; міжнародні",
+      "reason": "none_verified",
+      "engine_version": 12,
+      "checked_on": "2026-11-25",
+      "status": "published",
+      "facets": {
+        "audience": "nonprofit",
+        "sectors": [
+          "culture",
+          "education"
+        ],
+        "custom_sector": "Класична симфонічна музика",
+        "geo": "international",
+        "region": "",
+        "detail": "Симфонічний концерт і фондовий запис",
+        "applicant_role": "either",
+        "funding_format": "any"
+      },
+      "quality_diagnostics": {
+        "prefilter": {
+          "examined": 3243,
+          "geography": 1346,
+          "expired_or_unknown_deadline": 180,
+          "sector": 220,
+          "applicant_or_guard": 1451,
+          "empty_text": 8,
+          "semantic_topic": 30,
+          "not_yet_open": 3,
+          "before_deduplication": 5,
+          "duplicate_programmes": 1,
+          "after_prefilter": 4
+        },
+        "initial_candidates": 4,
+        "ai_reviewed": 4,
+        "ai_selected": 0,
+        "post_review_valid": 0,
+        "discarded_after_review": 0,
+        "final_direct": 0,
+        "final_conditional": 0
+      },
+      "published_on": "2026-11-25",
+      "channel_url": "https://t.me/ngo_grants/4162"
     }
   ],
   "v59_deliveries": {
