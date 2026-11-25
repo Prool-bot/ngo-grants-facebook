@@ -195,9 +195,9 @@ class ArchivedNovember2026RegressionTests(unittest.TestCase):
         self.assertEqual(1, len(dedupe_programmes([a, b])))
         facets = {"audience": "individual", "sectors": ["education", "it", "social"]}
         direct, conditional = partition_reviewed_rows([a, b], facets, as_of=TODAY)
-        self.assertEqual(1, len(direct))
-        self.assertFalse(conditional)
-        self.assertIn("членство не підтверджене", direct[0]["_funding_warning"])
+        self.assertFalse(direct)
+        self.assertEqual(1, len(conditional))
+        self.assertIn("інституційний PI", conditional[0]["_conditional_reason"])
 
     def test_real_meos_type_ushmm_and_naf_qualification(self):
         self.assertEqual("conference_cfp",
