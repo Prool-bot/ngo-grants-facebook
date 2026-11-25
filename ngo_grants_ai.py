@@ -36,7 +36,7 @@ from catalog_guard_v57 import quality_status, clarification_questions
 from catalog_precision_guard import same_grant_round, supports_explicit_open_applicants
 from catalog_quality_v60 import (
     effective_entry_deadline, first_mandatory_stage_deadline,
-    same_day_deadline_expired, opportunity_kind, open_for_new_applicants,
+    same_day_deadline_expired, opportunity_kind, funding_profile, open_for_new_applicants,
 )
 from catalog_presentation_v59 import partition_reviewed_rows
 from ngo_grants_v59_delivery import ensure_delivery, deliver_documents, reconcile_document
@@ -2350,10 +2350,13 @@ def rank_posts(rows: list[dict], query: str, keywords: list[str] | dict,
         if same_day_deadline_expired(content, deadline, as_of_dt):
             qa['same_day_cutoff'] += 1
             continue
-        if (facets and facets.get("funding_format") == "grant_only"
-                and opportunity_kind(content)[0] == "conference_cfp"):
-            qa['funding_type'] += 1
-            continue
+        if facets and facets.get("funding_format") == "grant_only":
+            support_kind = funding_profile(content)[0]
+            if (opportunity_kind(content)[0] == "conference_cfp"
+                    or support_kind in ("open_call", "award", "scholarship",
+                                        "fellowship", "residency")):
+                qa['funding_type'] += 1
+                continue
         if plan is not None:
             requested_services, requested_people = _intent_concepts(narrow)
             if requested_services and requested_people:
