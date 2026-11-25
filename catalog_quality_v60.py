@@ -174,8 +174,9 @@ def same_day_deadline_expired(post: str, deadline: date | None,
 def qualification_warnings(post: str, facets: dict | None) -> tuple[str, ...]:
     """Identify qualifications an unspecified individual has not confirmed.
 
-    These are not claims of ineligibility. For a broad individual filter they
-    demote apparent 'direct' matches to conditional with explicit warnings.
+    These do not establish ineligibility and do not change an applicant's
+    right to file independently. They remain visible in the PDF as requirements
+    the particular reader must verify before applying.
     """
     if not facets or facets.get("audience") != "individual":
         return ()
