@@ -10,7 +10,9 @@ from catalog_guard_v57 import quality_status
 from catalog_precision_guard import supports_explicit_open_applicants, same_grant_round
 from catalog_quality_v60 import (effective_entry_deadline, same_day_deadline_expired,
                                  qualification_warnings, opportunity_kind,
-                                 funding_profile, open_for_new_applicants)
+                                 funding_profile, open_for_new_applicants,
+                                 institutional_application_dependency,
+                                 missing_actionable_source)
 
 
 def partition_reviewed_rows(rows: list[dict], facets: dict | None,
@@ -81,11 +83,20 @@ def partition_reviewed_rows(rows: list[dict], facets: dict | None,
         information = " ".join(support_warnings + warnings)
         row["_funding_warning"] = " ".join(
             x for x in (previous_warning, information) if x)
-        if kind == "conference_cfp":
+        mandatory_partner = institutional_application_dependency(row.get("text") or "")
+        source_missing = missing_actionable_source(row.get("text") or "")
+        if kind == "conference_cfp" or mandatory_partner or source_missing:
             level = "conditional"
             previous_reason = str(row.get("_conditional_reason") or "").strip()
+            reasons = [
+                kind_label if kind == "conference_cfp" else "",
+                mandatory_partner,
+                ("Не знайдено дієвого посилання на правила організатора; "
+                 "право подання не підтверджене першоджерелом.")
+                if source_missing else "",
+            ]
             row["_conditional_reason"] = " ".join(
-                x for x in (previous_reason, kind_label) if x
+                x for x in (previous_reason, *reasons) if x
             )
         accepted.append(row)
         row["_relevance"] = level
