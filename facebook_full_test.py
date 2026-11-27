@@ -327,6 +327,14 @@ if not PAGE or not FB_TOKEN:
 def checkpoint():
     save_json(OUTPUT / "publication-report.json", REPORT)
 
+class MetaAPIError(RuntimeError):
+    def __init__(self, message, http_status, code=None, subcode=None, transient=False):
+        super().__init__(message)
+        self.http_status = http_status
+        self.code = str(code)
+        self.subcode = str(subcode)
+        self.transient = transient
+
 def api_result(response, service):
     try:
         result = response.json()
@@ -334,10 +342,12 @@ def api_result(response, service):
         raise RuntimeError(f"{service}: HTTP {response.status_code}, відповідь не JSON") from None
     if not response.ok or result.get("error"):
         error = result.get("error") or {}
-        raise RuntimeError(
+        raise MetaAPIError(
             f"{service}: HTTP {response.status_code}; код {error.get('code', 'unknown')}; "
             f"підкод {error.get('error_subcode', 'none')}; "
-            + str(error.get("message", "")).replace(FB_TOKEN, "[redacted]")
+            + str(error.get("message", "")).replace(FB_TOKEN, "[redacted]"),
+            response.status_code, error.get("code"), error.get("error_subcode"),
+            error.get("is_transient", False),
         )
     return result
 
@@ -589,25 +599,69 @@ def publish_reel(video, post):
     if not finished.get("success"):
         raise RuntimeError("Meta не підтвердила запит публікації рілз")
     REPORT["reel"]["stage"] = "publication_requested"
+    if finished.get("post_id"):
+        REPORT["reel"]["post_id"] = str(finished["post_id"])
     checkpoint()
     print(f"Запит публікації рілз прийнято. ID: {video_id}", flush=True)
-    for attempt in range(18):
-        status = graph("GET", video_id, {"fields": "status"}).get("status") or {}
-        REPORT["reel"]["status"] = status
+    verify_reel_publication(video_id)
+
+def verify_reel_publication(video_id):
+    # The finish request was accepted. Never repeat a write to Meta during polling.
+    reel = REPORT["reel"]
+    for attempt, delay in enumerate((10, 15, 25, 40, 60, 60), start=1):
+        time.sleep(delay)
+        reel["verification_attempts"] = attempt
+        try:
+            status = graph("GET", video_id, {"fields": "status"}).get("status") or {}
+        except MetaAPIError as error:
+            reel["last_verification_error"] = str(error)
+            checkpoint()
+            retryable = (
+                (error.code == "100" and error.subcode == "33")
+                or error.http_status == 429 or error.http_status >= 500
+                or error.transient or error.code in ("4", "17", "613")
+            )
+            print(f"Перевірка рілз {attempt}: {error}", flush=True)
+            if retryable:
+                continue
+            reel["stage"] = "verification_unavailable"
+            checkpoint()
+            print("::warning::Meta accepted Reel publication, but status lookup is unavailable; verify in Facebook before any retry.", flush=True)
+            return
+        except requests.RequestException as error:
+            reel["last_verification_error"] = type(error).__name__
+            checkpoint()
+            print(f"Перевірка рілз {attempt}: {type(error).__name__}", flush=True)
+            continue
+        except RuntimeError as error:
+            reel["last_verification_error"] = str(error)
+            reel["stage"] = "verification_unavailable"
+            checkpoint()
+            print("::warning::Meta accepted Reel publication, but the status response could not be interpreted.", flush=True)
+            return
+        reel.pop("last_verification_error", None)
+        reel["status"] = status
         checkpoint()
         print("Стан рілз:", json.dumps(status, ensure_ascii=False), flush=True)
-        if (status.get("publishing_phase") or {}).get("status") == "complete":
-            REPORT["reel"]["stage"] = "published"
-            checkpoint()
-            print("Рілз опубліковано")
-            return
         if status.get("video_status") == "error" or any(
             (status.get(phase) or {}).get("status") == "error"
             for phase in ("uploading_phase", "processing_phase", "publishing_phase")
         ):
+            reel["stage"] = "failed"
+            checkpoint()
             raise RuntimeError("Meta повідомила про помилку обробки рілз")
-        time.sleep(10)
-    raise RuntimeError("Meta не підтвердила завершення публікації рілз за 3 хвилини; перевірте статус перед повторним запуском")
+        if (status.get("publishing_phase") or {}).get("status") == "complete":
+            reel["stage"] = "published"
+            checkpoint()
+            print("Рілз опубліковано", flush=True)
+            return
+    reel["stage"] = "publication_unconfirmed"
+    checkpoint()
+    print("::warning::Meta accepted Reel publication; final status is unconfirmed after polling. Do not upload a duplicate.", flush=True)
+
+def has_source_url(item, field, url):
+    # A Telegram message ID must match exactly: /123 is not /1234.
+    return bool(re.search(re.escape(url) + r"(?![\w/])", item.get(field) or ""))
 
 def main():
     checkpoint()
@@ -627,13 +681,30 @@ def main():
 
     existing_posts = recent_items("posts", "id,message")
     existing_videos = recent_items("videos", "id,description")
-    if os.environ.get("PUBLISH_TO_FACEBOOK", "true").lower() == "true" and all(
-        any(post["telegram_url"] in (item.get("message") or "") for item in existing_posts)
+    publishing = os.environ.get("PUBLISH_TO_FACEBOOK", "true").lower() == "true"
+    all_posts_exist = all(
+        any(has_source_url(item, "message", post["telegram_url"]) for item in existing_posts)
         for post in posts
-    ) and any(posts[0]["telegram_url"] in (item.get("description") or "") for item in existing_videos):
-        REPORT["stage"] = "already_published"
+    )
+    existing_reel = next((item for item in existing_videos
+                          if has_source_url(item, "description", posts[0]["telegram_url"])), None)
+    if publishing and all_posts_exist:
+        for post in posts:
+            old = next(item for item in existing_posts
+                       if has_source_url(item, "message", post["telegram_url"]))
+            REPORT["posts"].append({"rank": post["rank"], "post_id": old["id"], "stage": "already_exists"})
+        if existing_reel:
+            REPORT["stage"] = "already_exists"
+            REPORT["reel"] = {"video_id": existing_reel["id"], "stage": "already_exists"}
+            checkpoint()
+            print("Усі матеріали вже знайдено; повторну публікацію пропущено", flush=True)
+            return
+        # A previous run may have accepted a Reel that is not yet visible in the list.
+        # Fail closed: require manual verification instead of publishing another copy.
+        REPORT["stage"] = "manual_verification_required"
+        REPORT["reel"] = {"stage": "not_found_in_recent_videos", "source_url": posts[0]["telegram_url"]}
         checkpoint()
-        print("Усі дописи та рілз уже опубліковані; повторний запуск пропущено", flush=True)
+        print("::warning::All posts already exist, but Reel is not listed. Verify Facebook before uploading a replacement.", flush=True)
         return
     photos = asyncio.run(telegram_images(posts))
     for post in posts:
@@ -659,15 +730,15 @@ def main():
     video = make_reel(posts[0])
     if os.environ.get("PUBLISH_TO_FACEBOOK", "true").lower() != "true":
         REPORT["stage"] = "preview_ready"
-        REPORT["duplicate_posts"] = sum(any(post["telegram_url"] in (item.get("message") or "") for item in existing_posts) for post in posts)
-        REPORT["duplicate_reel"] = any(posts[0]["telegram_url"] in (item.get("description") or "") for item in existing_videos)
+        REPORT["duplicate_posts"] = sum(any(has_source_url(item, "message", post["telegram_url"]) for item in existing_posts) for post in posts)
+        REPORT["duplicate_reel"] = any(has_source_url(item, "description", posts[0]["telegram_url"]) for item in existing_videos)
         checkpoint()
         print("Перевірку завершено. У Facebook нічого не опубліковано.")
         print("Уже існує дописів:", REPORT["duplicate_posts"], "рілз:", REPORT["duplicate_reel"])
         return
     for post in posts:
         old = next((item for item in existing_posts
-                    if post["telegram_url"] in (item.get("message") or "")), None)
+                    if has_source_url(item, "message", post["telegram_url"])), None)
         if old:
             entry = {"rank": post["rank"], "post_id": old["id"], "stage": "already_exists"}
         else:
@@ -683,15 +754,20 @@ def main():
         REPORT["posts"].append(entry)
         checkpoint()
         print("Допис:", json.dumps(entry, ensure_ascii=False), flush=True)
+    # Refresh the read-only duplicate check just before the Reel write.
+    existing_videos = recent_items("videos", "id,description")
     old_reel = next((item for item in existing_videos
-                     if posts[0]["telegram_url"] in (item.get("description") or "")), None)
+                     if has_source_url(item, "description", posts[0]["telegram_url"])), None)
     if old_reel:
         REPORT["reel"] = {"video_id": old_reel["id"], "stage": "already_exists"}
         checkpoint()
         print("Відео з цього допису вже існує, повторну публікацію пропущено")
     else:
         publish_reel(video, posts[0])
-    print("Повний запуск завершено. Перевірте видимість дописів і рілз у Facebook.")
+    REPORT["stage"] = ("completed" if REPORT["reel"]["stage"] in ("published", "already_exists")
+                       else "completed_with_unconfirmed_reel")
+    checkpoint()
+    print("Публікація дописів завершена; статус рілз:", REPORT["reel"]["stage"], flush=True)
 
 if __name__ == "__main__":
     try:
