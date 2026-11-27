@@ -17,10 +17,12 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
+      - name: Offline Reel regression tests
+        run: python tests/test_facebook_reel_status.py
       - name: Install dependencies
         run: python -m pip install requests beautifulsoup4 Pillow telethon==1.45.0
       - name: Install FFmpeg
@@ -40,7 +42,7 @@ jobs:
         run: python -u facebook_full_test.py
       - name: Save materials and publication report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: facebook-full-test-${{ github.run_id }}
           path: output/
