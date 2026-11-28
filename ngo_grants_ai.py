@@ -4748,9 +4748,11 @@ def make_one_catalog(state: dict, rows: list[dict], *, dry_run=False) -> bool:
         title = review["title"]
         keywords = review["keywords"]
         # Validate the ranking again: expired/deleted posts cannot be published.
-        ranked = rank_posts(rows, query, keywords, facets=facets,
-                            as_of_dt=now,
-                            film_second_pass=bool(keywords.get('film_second_pass')))
+        if keywords.get('film_second_pass'):
+            ranked = rank_posts(rows, query, keywords, facets=facets,
+                                as_of_dt=now, film_second_pass=True)
+        else:
+            ranked = rank_posts(rows, query, keywords, facets=facets, as_of_dt=now)
 
 
 
