@@ -2,27 +2,7 @@
   "schema_version": 1,
   "last_update_id": 272838698,
   "users_days": {},
-  "queue": [
-    {
-      "id": 2320830316557506,
-      "topic": "На розвиток кіно; для некомерційних організацій; сфери: Соціальна та гуманітарна сфера, Культура та мистецтво, Медіа та журналістика, Документальне кіно; в Україні",
-      "requested_at": "2026-11-28T10:04:51.128Z",
-      "facets": {
-        "audience": "nonprofit",
-        "sectors": [
-          "social",
-          "culture",
-          "media"
-        ],
-        "custom_sector": "Документальне кіно",
-        "geo": "ukraine",
-        "region": "",
-        "detail": "На розвиток кіно",
-        "applicant_role": "lead",
-        "funding_format": "any"
-      }
-    }
-  ],
+  "queue": [],
   "published": [
     {
       "id": 272838672,
@@ -2067,6 +2047,47 @@
       },
       "published_on": "2026-11-25",
       "channel_url": "https://t.me/ngo_grants/4162"
+    },
+    {
+      "id": 2320830316557506,
+      "topic": "На розвиток кіно; для некомерційних організацій; сфери: Соціальна та гуманітарна сфера, Культура та мистецтво, Медіа та журналістика, Документальне кіно; в Україні",
+      "reason": "no_candidate",
+      "engine_version": 12,
+      "checked_on": "2026-11-28",
+      "status": "published",
+      "facets": {
+        "audience": "nonprofit",
+        "sectors": [
+          "social",
+          "culture",
+          "media"
+        ],
+        "custom_sector": "Документальне кіно",
+        "geo": "ukraine",
+        "region": "",
+        "detail": "На розвиток кіно",
+        "applicant_role": "lead",
+        "funding_format": "any"
+      },
+      "quality_diagnostics": {
+        "prefilter": {
+          "examined": 3293,
+          "strict_topic": 3233,
+          "film_eligibility": 45,
+          "empty_text": 8,
+          "applicant_or_guard": 2,
+          "not_yet_open": 3,
+          "geography": 2,
+          "before_deduplication": 0,
+          "duplicate_programmes": 0,
+          "after_prefilter": 0
+        },
+        "ai_reviewed": 0,
+        "ai_selected": 0,
+        "final_results": 0
+      },
+      "published_on": "2026-11-28",
+      "channel_url": "https://t.me/ngo_grants/4241"
     }
   ],
   "v59_deliveries": {
