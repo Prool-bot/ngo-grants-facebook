@@ -15,6 +15,7 @@ MARKER = "NGO_QUIET_SUPPORT_V01"
 DIRECT = "const __ngoMiniAppDirectHTML="
 NATIVE = "const __ngoMiniAppHTML="
 TELL = "async function tell(env,chatId,text,markup=null,editId=null){"
+NATIVE_TELL = "async function __ngoMiniAppTelegramSend(env,chatId,text,keyboard=null){"
 HANDLER = r"(\basync\s+function\s+handleTelegram\s*\(\s*env\s*,\s*update\s*\)\s*\{)"
 BLOCK = (
     '<div id="ngoQuietSupport" style="text-align:center;margin:18px 0 4px">'
@@ -61,7 +62,8 @@ function __ngoQuietSupportDecorate(chatId,text,markup){
   const rows=key?markup[key]:[];
   const names=rows.flat().map(b=>typeof b==="string"?b:b?.text||"").join(" ").toLowerCase();
   if(names.includes("підтримати проєкт"))return {text,markup};
-  const menu=key&&(names.includes("замовити каталог")||names.includes("знайти гранти"))&&names.includes("готові каталоги");
+  const menu=key&&(((names.includes("замовити каталог")||names.includes("знайти гранти"))&&names.includes("каталоги"))||
+    (reply&&rows.flat().some(b=>b?.web_app&&b.text?.includes("грантового помічника"))&&names.includes("/start")));
   const plain=text.replace(/<[^>]*>/g," ").replace(/\s+/g," ").toLowerCase();
   const ready=/(?:каталог\s+(?:вже\s+)?готовий|каталог\s+(?:вже\s+)?опубліковано|готовий\s+каталог)/u.test(plain)
       && !/(?:не\s+готовий|ще\s+не|немає|не\s+знайдено)/u.test(plain)
@@ -99,7 +101,7 @@ IN_HANDLER = '''
 
 def patch(source: str, direct_live: str, native_live: str) -> str:
     if (MARKER in source or not source or len(source)>8_000_000
-        or source.count(TELL)!=1 or len(re.findall(HANDLER,source))!=1
+        or source.count(TELL)!=1 or source.count(NATIVE_TELL)!=1 or len(re.findall(HANDLER,source))!=1
         or source.count("export default")!=1
         or "NGO_MINI_APP_DIRECT_API_DORMANT_V05" not in source
         or "NGO_GRANTS_NATIVE_MINI_APP_V01" not in source
@@ -108,6 +110,7 @@ def patch(source: str, direct_live: str, native_live: str) -> str:
     out=splice_html(source,DIRECT,direct_live)
     out=splice_html(out,NATIVE,native_live)
     out=out.replace(TELL,TELL+IN_TELL,1)
+    out=out.replace(NATIVE_TELL,NATIVE_TELL+"\n  const __decorated=__ngoQuietSupportDecorate(chatId,text,keyboard);\n  text=__decorated.text; keyboard=__decorated.markup;\n",1)
     out=re.sub(HANDLER,lambda m:m.group(1)+IN_HANDLER,out,count=1)
     out=out.replace("export default",HELPER+"\nexport default",1)
     if out.count(MARKER)!=1:
