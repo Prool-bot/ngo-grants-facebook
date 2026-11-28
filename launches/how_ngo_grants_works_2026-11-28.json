@@ -1,9 +1,15 @@
 {
-  "status": "attempted",
+  "status": "posted",
   "channel": "@ngo_grants",
   "run_id": "46131218927",
   "characters": 4003,
   "utf16": 4009,
   "sha256": "99eedc64b4bd5cab9194f42f11976bc22924cba5fb89b2d720157e60aa8ae929",
-  "created_at": "2026-11-28T09:36:03.287806+00:00"
+  "created_at": "2026-11-28T09:36:03.287806+00:00",
+  "message_id": 4239,
+  "url": "https://t.me/ngo_grants/4239",
+  "published_at": "2026-11-28T09:36:04.833515+00:00",
+  "text_verified": true,
+  "buttons_verified": true,
+  "bold_entities": 11
 }
