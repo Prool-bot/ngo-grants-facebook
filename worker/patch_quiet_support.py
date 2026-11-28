@@ -65,7 +65,7 @@ function __ngoQuietSupportDecorate(chatId,text,markup){
   const menu=key&&(((names.includes("замовити каталог")||names.includes("знайти гранти"))&&names.includes("каталоги"))||
     (reply&&rows.flat().some(b=>b?.web_app&&b.text?.includes("грантового помічника"))&&names.includes("/start")));
   const plain=text.replace(/<[^>]*>/g," ").replace(/\s+/g," ").toLowerCase();
-  const ready=/(?:каталог\s+(?:вже\s+)?готовий|каталог\s+(?:вже\s+)?опубліковано|готовий\s+каталог)/u.test(plain)
+  const ready=/(?:каталог\s+(?:вже\s+)?готовий|каталог\s+(?:вже\s+)?опубліковано|готовий\s+каталог|каталоги\s+(?:вже\s+)?(?:готові|опубліковано)|добірка\s+(?:вже\s+)?готова)/u.test(plain)
       && !/(?:не\s+готовий|ще\s+не|немає|не\s+знайдено)/u.test(plain)
       && (/(?:https?:\/\/t\.me\/(?:ngo_grants\/\d+|c\/\d+\/\d+))/i.test(text)||
           rows.flat().some(b=>typeof b?.url==="string"&&/^https:\/\/t\.me\/(?:ngo_grants\/\d+|c\/\d+\/\d+)/i.test(b.url)));
