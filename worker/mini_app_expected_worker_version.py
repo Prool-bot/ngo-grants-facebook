@@ -79,4 +79,13 @@ def expected_version()->str:
         not isinstance(final,str) or
         not re.fullmatch(r"[a-f0-9-]{36}",final) or final==combined):
         raise RuntimeError("Unexpected v0.5.7 quiet support release receipt")
-    return final
+    header_receipt=Path(__file__).resolve().parents[1]/"launches/mini_app_v058_live_version.json"
+    if not header_receipt.is_file():return final
+    header=json.loads(header_receipt.read_text("utf-8"))
+    top=header.get("version_id")
+    if (header.get("status")!="deployed_verified" or
+        header.get("previous_version")!=final or
+        header.get("script")!="ngo-grants-instant-bot" or
+        not isinstance(top,str) or not re.fullmatch(r"[a-f0-9-]{36}",top) or top==final):
+        raise RuntimeError("Unexpected v0.5.8 support header receipt")
+    return top
