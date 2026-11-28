@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 from base64 import b64encode
 import urllib.request
 import urllib.error
+from urllib.parse import urlparse, parse_qs
 from mini_app_pinned_shortcut_v05 import preflight, POST_ID, CHANNEL, MAIN_LINK, LABEL
 from mini_app_public_preflight import telegram
 from mini_app_public_launch import github_api
@@ -28,10 +29,17 @@ def plan_markup(message, *, post_id=POST_ID):
     if not isinstance(rows,list) or any(not isinstance(r,list) or not r for r in rows):
         raise RuntimeError("Invalid current pinned markup")
     if any(set(b)!={"text","url"} or not isinstance(b["text"],str) or not isinstance(b["url"],str)
-           or not b["url"].startswith("https://") for r in rows for b in r):
+           or not b["url"].startswith(("https://","tg://")) for r in rows for b in r):
         raise RuntimeError("Unsupported existing button type; no overwrite")
     rows=[list(r) for r in rows]
-    if not any(b["url"]==MAIN_LINK for r in rows for b in r):
+    def is_launch(url):
+        if url==MAIN_LINK:return True
+        parsed=urlparse(url)
+        args=parse_qs(parsed.query)
+        return (parsed.scheme=="tg" and parsed.netloc=="resolve" and
+                [x.lower() for x in args.get("domain",[])]==["ngogratsai_bot"] and
+                args.get("startapp")==["ngo_grants"])
+    if not any(is_launch(b["url"]) for r in rows for b in r):
         rows.insert(0,[{"text":LABEL,"url":MAIN_LINK}])
     if not any(b["url"]==SUPPORT_URL for r in rows for b in r):
         rows.append([{"text":SUPPORT_LABEL,"url":SUPPORT_URL}])
@@ -103,6 +111,9 @@ async def inspect_and_edit(token):
         msg=candidates[0]
         post_id=msg.id
         original=snapshot(msg)
+        raw_rows=getattr(getattr(msg,"reply_markup",None),"rows",[]) or []
+        print("PINNED_BUTTON_TYPES="+str([[type(b).__name__ for b in row.buttons] for row in raw_rows]))
+        print("PINNED_BUTTON_SCHEMES="+str([[urlparse(str(getattr(b,"url","") or "")).scheme for b in row.buttons] for row in raw_rows]))
         markup=plan_markup(original,post_id=post_id)
         already=original["reply_markup"]==markup
         print("EXACT_PINNED_SHORTCUT_VERIFIED="+str(post_id))
