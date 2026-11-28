@@ -1,0 +1,9 @@
+{
+  "status": "deployed_verified",
+  "script": "ngo-grants-instant-bot",
+  "version_id": "39a32b23-3e76-4aa4-8085-41c46edf1a1d",
+  "previous_version": "3ab73fb0-37d1-4d1a-91f1-6d7653d1a024",
+  "scope": "quiet voluntary support link in Mini App and existing bot messages; no orders, payments, D1 or new messages",
+  "verified_at": "2026-11-28T08:54:02.358209+00:00",
+  "run_id": "46127897265"
+}
