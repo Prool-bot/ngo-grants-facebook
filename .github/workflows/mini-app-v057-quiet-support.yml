@@ -1,0 +1,86 @@
+name: NGO Grants Mini App v0.5.7 — quiet voluntary support
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/mini-app-v057-quiet-support.yml'
+      - 'worker/patch_quiet_support.py'
+      - 'worker/release_mini_app_v057_quiet_support.py'
+  pull_request:
+    paths:
+      - '.github/workflows/mini-app-v057-quiet-support.yml'
+      - 'worker/patch_quiet_support.py'
+      - 'worker/release_mini_app_v057_quiet_support.py'
+      - 'worker/mini_app_expected_worker_version.py'
+      - 'mini-app/**'
+      - 'ngo_grants_ai.py'
+      - 'tests/test_quiet_support.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.event_name == 'pull_request' && format('ngo-quiet-support-pr-{0}', github.event.pull_request.number) || 'ngo-grants-worker-production-deploy' }}
+  cancel-in-progress: false
+
+jobs:
+  offline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Verify quiet links, preserved order UI and PDF last-page placement
+        run: |
+          python -m pip install reportlab==4.4.9 pypdf==5.9.0
+          python -m py_compile ngo_grants_ai.py worker/patch_quiet_support.py worker/release_mini_app_v057_quiet_support.py worker/mini_app_expected_worker_version.py
+          python -m unittest discover -s tests -p 'test_quiet_support.py' -v
+          python -m unittest discover -s tests -p 'test_mini_app_v054_ui.py' -v
+          python -m unittest discover -s tests -p 'test_mini_app_greeting_precision.py' -v
+          node --test mini-app/tests/*.test.cjs mini-app/tests/*.test.mjs
+
+  safe_release:
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    needs: offline
+    runs-on: ubuntu-latest
+    timeout-minutes: 14
+    permissions:
+      contents: write
+    env:
+      CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
+      CF_WORKER_ACCOUNT_ID: ${{ secrets.CF_WORKER_ACCOUNT_ID }}
+      CF_WORKER_API_TOKEN: ${{ secrets.CF_WORKER_API_TOKEN }}
+      NGO_BOT_GATEWAY_URL: ${{ secrets.NGO_BOT_GATEWAY_URL }}
+      NGO_GRANTS_AI_BOT_TOKEN: ${{ secrets.NGO_GRANTS_AI_BOT_TOKEN }}
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      NGO_MINI_APP_V057_RELEASE_APPROVED: 'YES_RELEASE_MINI_APP_V057_QUIET_SUPPORT_CANARY'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Verified active Worker patch, stage and canary with rollback
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -f launches/mini_app_v057_live_version.json ]; then
+            echo 'Quiet support version already recorded; no automatic repeat deployment.'
+            exit 0
+          fi
+          umask 077
+          scratch="$(mktemp -d "${RUNNER_TEMP}/ngo-miniapp-v057.XXXXXX")"
+          trap 'rm -rf "$scratch"' EXIT
+          python scripts/mini_app_v05_health_readonly.py
+          python worker/read_live_mini_app_v05_diagnosis.py "$scratch/worker-before.mjs"
+          python worker/patch_quiet_support.py "$scratch/worker-before.mjs" "$scratch/worker-after.mjs"
+          node --check "$scratch/worker-after.mjs"
+          python worker/stage_worker_mini_app.py "$scratch/worker-after.mjs"
+          python worker/release_mini_app_v057_quiet_support.py
