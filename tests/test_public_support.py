@@ -34,3 +34,21 @@ class PublicSupportTests(unittest.TestCase):
             self.assertEqual(ai.catalog_public_markup(both),both)
         with patch.object(ai,"verified_order_url",return_value=None):
             self.assertEqual(ai.catalog_public_markup()["inline_keyboard"][0][0]["url"],ai.SUPPORT_URL)
+
+    def test_catalog_caption_has_quiet_invitation_and_link(self):
+        order="https://t.me/ngogratsAI_bot?startapp=ngo_grants"
+        with patch.object(ai,"verified_order_url",return_value=order):
+            caption=ai._catalog_caption("Тест", "Відбудова громад", None, 29, 0, 29)
+            self.assertIn("Якщо наші матеріали корисні для вас, підтримайте розвиток NGO Grants.",caption)
+            self.assertTrue(caption.endswith(ai.SUPPORT_URL))
+            self.assertEqual(caption.count(ai.SUPPORT_URL),1)
+            self.assertIn(order,caption)
+            self.assertIn("Можливостей: 29 (прямі: 0; умовні: 29).",caption)
+            self.assertIn("Перевіряйте актуальні правила й дедлайни.",caption)
+            # Near-limit descriptions must never be truncated by the new invitation.
+            base_len=len(ai._catalog_caption("Тест", "", None, 29, 0, 29).split("\n\n❤️")[0])
+            detail="X"*(990-base_len)
+            long_caption=ai._catalog_caption("Тест", detail, None, 29, 0, 29)
+            self.assertIn(detail,long_caption)
+            self.assertLessEqual(len(long_caption),1000)
+            self.assertNotIn(ai.SUPPORT_URL,long_caption)

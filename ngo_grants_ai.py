@@ -1972,6 +1972,14 @@ def _catalog_caption(title: str, query: str, facets: dict | None,
         # Telegram sendDocument allows up to 1024 caption characters; fail
         # explicitly rather than silently publishing a mutilated user query.
         raise ValueError('Текст підпису до каталогу перевищує ліміт Telegram')
+    # Preserve the full grant summary and its existing links. The separate
+    # support button remains available even when the caption is at its limit.
+    invitation = '❤️ Якщо наші матеріали корисні для вас, підтримайте розвиток NGO Grants.'
+    for extra in (invitation + '\n' + SUPPORT_URL, invitation,
+                  '❤️ Підтримати NGO Grants'):
+        candidate = caption + '\n\n' + extra
+        if len(candidate.encode('utf-16-le')) // 2 <= 1000:
+            return candidate
     return caption
 
 
