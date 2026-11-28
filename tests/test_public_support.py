@@ -52,3 +52,18 @@ class PublicSupportTests(unittest.TestCase):
             self.assertIn(detail,long_caption)
             self.assertLessEqual(len(long_caption),1000)
             self.assertNotIn(ai.SUPPORT_URL,long_caption)
+
+    def test_no_results_public_message_support_and_existing_link(self):
+        order="https://t.me/ngogratsAI_bot?startapp=ngo_grants"
+        item={"topic":"На розвиток кіно","checked_on":"2026-11-28"}
+        with patch.object(ai,"verified_order_url",return_value=order):
+            msg=ai.public_no_results_text(item)
+            self.assertIn("Відповідних актуальних можливостей не знайдено.",msg)
+            self.assertTrue(msg.endswith(ai.SUPPORT_INVITATION))
+            self.assertEqual(msg.count(ai.SUPPORT_INVITATION),1)
+            self.assertIn(order,msg)
+            self.assertEqual(ai.no_results_public_markup()["inline_keyboard"],[
+                [{"text":"🤖 Знайти гранти","url":order}],
+                [{"text":"❤️ Підтримати NGO Grants","url":ai.SUPPORT_URL}]])
+        with patch.object(ai,"verified_order_url",return_value=None):
+            self.assertEqual(len(ai.no_results_public_markup()["inline_keyboard"]),1)

@@ -50,6 +50,7 @@ from ngo_grants_v59_navigation import ensure_companion_navigation
 CHANNEL = "ngo_grants"
 SUPPORT_URL = "https://donatello.to/NGO_Grants"
 SUPPORT_LABEL = "❤️ Підтримати проєкт"
+SUPPORT_INVITATION = "❤️ Якщо наші матеріали корисні для вас, підтримайте розвиток NGO Grants."
 # The legacy hard-coded handle was not validated against the active bot.
 # Never put an unverified username into a public Telegram post or PDF.
 BOT = "ngoGrantsAI_bot"  # legacy reference only; NEVER use as a public link
@@ -1975,7 +1976,7 @@ def _catalog_caption(title: str, query: str, facets: dict | None,
         raise ValueError('Текст підпису до каталогу перевищує ліміт Telegram')
     # Preserve the full grant summary and its existing links. The separate
     # support button remains available even when the caption is at its limit.
-    invitation = '❤️ Якщо наші матеріали корисні для вас, підтримайте розвиток NGO Grants.'
+    invitation = SUPPORT_INVITATION
     for extra in (invitation + '\n' + SUPPORT_URL, invitation,
                   '❤️ Підтримати NGO Grants'):
         candidate = caption + '\n\n' + extra
@@ -4406,13 +4407,22 @@ def public_no_results_text(item: dict) -> str:
             'ℹ️ Пошук проводиться лише серед дописів каналу. '
             'Це не означає, що таких грантів немає поза архівом.\n\n'
             '💡 Перед новим замовленням перегляньте попередні результати каналу.\n'
-            + (f'\n{order_link_line()}' if verified_order_url() else ''))
+            + (f'\n{order_link_line()}' if verified_order_url() else '')
+            + '\n\n' + SUPPORT_INVITATION)
 
 
 
 
 
 
+
+
+def no_results_public_markup() -> dict:
+    """Keep Find Grants first; support is voluntary even without a PDF."""
+    order_url = verified_order_url()
+    rows = [[{"text": "🤖 Знайти гранти", "url": order_url}]] if order_url else []
+    rows.append([{"text": "❤️ Підтримати NGO Grants", "url": SUPPORT_URL}])
+    return {"inline_keyboard": rows}
 
 
 def publish_pending_no_results(state: dict, *, now: datetime | None = None) -> bool:
@@ -4460,9 +4470,7 @@ def publish_pending_no_results(state: dict, *, now: datetime | None = None) -> b
                 'text': public_no_results_text(item),
                 'parse_mode': 'HTML',
                 'disable_web_page_preview': True,
-                **({'reply_markup': {'inline_keyboard': [[{
-                    'text': '🤖 Знайти гранти', 'url': verified_order_url()
-                }]]}} if verified_order_url() else {}),
+                'reply_markup': no_results_public_markup(),
             })
             message_id = int(response['result']['message_id'])
         except (RuntimeError, ValueError, TypeError, KeyError) as exc:
