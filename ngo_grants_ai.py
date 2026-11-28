@@ -47,6 +47,8 @@ from ngo_grants_v59_navigation import ensure_companion_navigation
 
 
 CHANNEL = "ngo_grants"
+SUPPORT_URL = "https://donatello.to/NGO_Grants"
+SUPPORT_LABEL = "❤️ Підтримати проєкт"
 # The legacy hard-coded handle was not validated against the active bot.
 # Never put an unverified username into a public Telegram post or PDF.
 BOT = "ngoGrantsAI_bot"  # legacy reference only; NEVER use as a public link
@@ -2974,6 +2976,7 @@ UI_CATALOGS = "📚 Готові каталоги"
 UI_HELP = "❓ Як користуватися"
 UI_EXAMPLES = "💡 Приклади тем"
 UI_STATUS = "⏳ Стан черги"
+UI_SUPPORT = SUPPORT_LABEL
 BOT_PROFILE_VERSION = 1
 
 
@@ -2984,6 +2987,7 @@ UI_KEYBOARD = {
         [{"text": UI_ORDER}, {"text": UI_CATALOGS}],
         [{"text": UI_HELP}, {"text": UI_EXAMPLES}],
         [{"text": UI_STATUS}],
+        [{"text": UI_SUPPORT}],
     ],
     "resize_keyboard": True,
     "is_persistent": True,
@@ -3703,11 +3707,34 @@ def pdf_catalog(path: Path, title: str, topic: str, rows: list[dict], stamp: dat
 
 
 
+    def support_footer(cover: bool = False):
+        # A quiet, clickable last-page block; QR is generated locally.
+        from reportlab.graphics.barcode.qr import QrCodeWidget
+        from reportlab.graphics.shapes import Drawing
+        from reportlab.graphics import renderPDF
+        x = 74*mm if not cover else 22*mm
+        y = 1.0*mm if not cover else 5*mm
+        width = 100*mm
+        qr_size = 15*mm
+        c.setFillColor(WHITE)
+        c.roundRect(x, y, width, 16*mm, 4, fill=1, stroke=0)
+        draw_text("За бажанням: підтримати NGO Grants AI", x+2*mm, y+10*mm, 7.0, bold, TEAL)
+        draw_text(SUPPORT_URL, x+2*mm, y+4.5*mm, 6.8, font, DARK)
+        widget = QrCodeWidget(SUPPORT_URL, barBorder=4)
+        x0, y0, x1, y1 = widget.getBounds()
+        sx, sy = qr_size/(x1-x0), qr_size/(y1-y0)
+        drawing = Drawing(qr_size, qr_size, transform=[sx, 0, 0, sy, -x0*sx, -y0*sy])
+        drawing.add(widget)
+        renderPDF.draw(drawing, c, x+width-qr_size-1*mm, y+0.5*mm)
+        c.linkURL(SUPPORT_URL, (x, y, x+width, y+16*mm), relative=0)
+
     def footer(page: int):
         c.setStrokeColor(LINE)
         c.line(20*mm, 17*mm, W-20*mm, 17*mm)
         draw_text('NGO GRANTS  /  @ngo_grants', 20*mm, 12*mm, 7.7, bold, TEAL)
-        c.linkURL(f'https://t.me/{CHANNEL}', (18*mm, 9*mm, 110*mm, 18*mm), relative=0)
+        c.linkURL(f'https://t.me/{CHANNEL}', (18*mm, 9*mm, (73 if page == max_page else 110)*mm, 18*mm), relative=0)
+        if page == max_page:
+            support_footer()
         c.setFont(font, 7.6)
         c.setFillColor(GREY)
         c.drawRightString(W-20*mm, 12*mm, f'{page} / {max_page}')
@@ -3862,6 +3889,8 @@ def pdf_catalog(path: Path, title: str, topic: str, rows: list[dict], stamp: dat
               colors.HexColor('#CEE5EB'))
     c.linkURL(verified_order_url() or f'https://t.me/{CHANNEL}',
               (22*mm,29*mm,W-22*mm,60*mm),relative=0)
+    if not prepared_pages:
+        support_footer(cover=True)
     c.showPage()
     # CONTENT: short cards remain two per A4; longer ones get a full page.
     number = 0
@@ -3973,6 +4002,10 @@ def handle_update(update: dict, state: dict, token: str) -> None:
         return
     if cmd == "/status" or txt == UI_STATUS:
         show_status(chat_id, state)
+        return
+    if cmd == "/support" or txt == UI_SUPPORT:
+        message(chat_id, "За бажанням підтримайте розвиток NGO Grants AI. Доступ залишається безкоштовним.",
+                reply_markup={"inline_keyboard": [[{"text": SUPPORT_LABEL, "url": SUPPORT_URL}]]})
         return
     if cmd == "/cancel":
         show_menu(chat_id)
