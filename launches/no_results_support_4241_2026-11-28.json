@@ -1,0 +1,25 @@
+{
+  "status": "verified_edited",
+  "message_id": 4241,
+  "url": "https://t.me/ngo_grants/4241",
+  "buttons": {
+    "inline_keyboard": [
+      [
+        {
+          "text": "🤖 Знайти гранти",
+          "url": "https://t.me/ngogratsAI_bot?startapp=ngo_grants"
+        }
+      ],
+      [
+        {
+          "text": "❤️ Підтримати NGO Grants",
+          "url": "https://donatello.to/NGO_Grants"
+        }
+      ]
+    ]
+  },
+  "text_verified": true,
+  "bold_entities": 3,
+  "verified_at": "2026-11-28T11:05:06.521829+00:00",
+  "run_id": "46138159185"
+}
