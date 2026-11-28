@@ -3186,6 +3186,17 @@ def configure_bot_profile(state: dict) -> None:
 
 
 
+def catalog_public_markup(existing: dict | None = None) -> dict:
+    """Preserve companion navigation; add optional support only to PDF posts."""
+    rows = [list(row) for row in (existing or {}).get("inline_keyboard", [])]
+    order_url = verified_order_url()
+    if order_url and not any(button.get("url") == order_url for row in rows for button in row):
+        rows.append([{"text": "🤖 Замовити власний каталог", "url": order_url}])
+    if not any(button.get("url") == SUPPORT_URL for row in rows for button in row):
+        rows.append([{"text": "❤️ Підтримати NGO Grants", "url": SUPPORT_URL}])
+    return {"inline_keyboard": rows}
+
+
 def upload_pdf(file: Path, caption: str) -> int:
     token = os.environ["NGO_GRANTS_AI_BOT_TOKEN"].strip()
     boundary = "----ngo-grants-ai-pdf" + hashlib.sha256(file.name.encode()).hexdigest()[:16]
@@ -3195,6 +3206,7 @@ def upload_pdf(file: Path, caption: str) -> int:
         raise ValueError("Занадто довгий підпис PDF для Telegram")
     blob = b"".join([field("chat_id", "@" + CHANNEL), field("caption", caption),
                      field("disable_notification", "false"),
+                     field("reply_markup", json.dumps(catalog_public_markup(), ensure_ascii=False)),
                      f"--{boundary}\r\nContent-Disposition: form-data; name=\"document\"; filename=\"{file.name}\"\r\nContent-Type: application/pdf\r\n\r\n".encode(),
                      file.read_bytes(), b"\r\n", f"--{boundary}--\r\n".encode()])
     req = urllib.request.Request(f"https://api.telegram.org/bot{token}/sendDocument", data=blob,
@@ -4467,7 +4479,7 @@ def link_v59_pdfs(state: dict, order_id: int,
             "editMessageReplyMarkup", {
                 "chat_id": "@" + CHANNEL,
                 "message_id": message_id,
-                "reply_markup": markup,
+                "reply_markup": catalog_public_markup(markup),
             }),
         save=save_checkpoint)
 

@@ -1,0 +1,32 @@
+name: NGO Grants — quiet support on existing pinned post and new catalogs
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/pinned-donatello-support.yml'
+      - 'scripts/add_pinned_support.py'
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: ngo-grants-main-mini-app-channel-pilot
+  cancel-in-progress: false
+jobs:
+  pinned_support:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      NGO_GRANTS_AI_BOT_TOKEN: ${{ secrets.NGO_GRANTS_AI_BOT_TOKEN }}
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      NGO_PINNED_SUPPORT_APPROVED: 'YES_ADD_SUPPORT_ROW_3813'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - name: Test pinned and PDF markup without network writes
+        run: |
+          python -m py_compile scripts/add_pinned_support.py ngo_grants_ai.py
+          python -m unittest discover -s tests -p 'test_public_support.py' -v
+          python -m unittest discover -s tests -p 'test_ngo_grants_v59_navigation.py' -v
+      - name: Edit only reply markup of existing pinned post
+        run: python scripts/add_pinned_support.py
