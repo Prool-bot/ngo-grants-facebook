@@ -32,6 +32,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from zoneinfo import ZoneInfo
+from catalog_film_second_pass import broader_film_funding_evidence
 from catalog_grant_only_gate import grant_only_eligible
 from catalog_guard_v57 import quality_status, clarification_questions
 from catalog_precision_guard import same_grant_round, supports_explicit_open_applicants
@@ -137,7 +138,7 @@ MIN_GAP_HOURS = 2
 # Review every candidate over successive scheduled runs to preserve free AI credits.
 AI_REVIEW_BATCH_SIZE = 12
 AI_REVIEW_BATCHES_PER_RUN = 3
-SEARCH_ENGINE_VERSION = 12  # Per-request quality telemetry and broad-service conditional review
+SEARCH_ENGINE_VERSION = 13  # Per-request quality telemetry and broad-service conditional review
 # Public status messages are independent of the 3-PDF/day quota.
 MAX_NO_RESULTS_PER_DAY = 3
 NO_RESULTS_REPEAT_DAYS = 7
@@ -2288,7 +2289,8 @@ def _relaxed_subject_candidate(post: str, plan: dict, subject: str) -> tuple[boo
 def rank_posts(rows: list[dict], query: str, keywords: list[str] | dict,
                now: date | None = None, facets: dict | None = None,
                as_of_dt: datetime | None = None,
-               diagnostics: dict | None = None) -> list[dict]:
+               diagnostics: dict | None = None,
+               film_second_pass: bool = False) -> list[dict]:
     """Two-stage retrieval: explicit-topic evidence first, applicant tier later.
 
 
@@ -2319,7 +2321,10 @@ def rank_posts(rows: list[dict], query: str, keywords: list[str] | dict,
         if facets and not supports_explicit_open_applicants(content, facets.get('detail') or ''):
             qa['explicit_applicant_modes'] += 1
             continue
-        if narrow and not strict_topic_match(narrow, content):
+        film_broader = bool(
+            film_second_pass and (film_request(narrow) or documentary_request(narrow))
+            and broader_film_funding_evidence(content))
+        if narrow and not strict_topic_match(narrow, content) and not film_broader:
             qa['strict_topic'] += 1
             continue
         # For film searches by an NGO, reject individual-only and company-only
@@ -2413,6 +2418,10 @@ def rank_posts(rows: list[dict], query: str, keywords: list[str] | dict,
             if relaxed:
                 match = True
                 score = max(score, bonus)
+            if film_broader:
+                # Bounded second pass: positive audiovisual project funding
+                # may be contextually relevant even without the narrow genre.
+                match, score = True, max(score, 6)
             if not match:
                 qa['semantic_topic'] += 1
                 continue
@@ -2445,6 +2454,11 @@ def rank_posts(rows: list[dict], query: str, keywords: list[str] | dict,
                       if line.strip()), 'Грантова можливість')
         item = dict(row)
         item['_score'] = score
+        item['_film_second_pass'] = film_broader
+        if film_broader:
+            item['_conditional_reason'] = (
+                'Ширша аудіовізуальна програма: фінансування саме '
+                'запитаного виду кінопроєкту потрібно підтвердити.')
         item['_relaxed_subject'] = bool(relaxed)
         item['_broad_service_scope'] = bool(
             _broad_psychosocial_service_evidence(content, _intent_concepts(narrow)[0])
@@ -2777,6 +2791,9 @@ def ai_classify(query: str, ranked: list[dict]) -> dict[int, str]:
         'Для складного запиту розділяй фінансовану ДІЯЛЬНІСТЬ і ЦІЛЬОВУ ГРУПУ. '
         'Наприклад, "психосоціальна підтримка ветеранів" — це ОДИН вид '
         'допомоги конкретним людям, а не "ветерани АБО психологія". '
+        'Для broader_audiovisual_second_pass=true допускай лише CONDITIONAL, '
+        'і тільки якщо фінансується аудіовізуальна діяльність, географія та '
+        'тип заявника справді підходять; не домислюй фінансування жанру. '
         'DIRECT: джерело явно підтверджує оплату запитаної діяльності для '
         'цільової групи ТА право обраного заявника. '
         'CONDITIONAL: фінансована діяльність підтверджена, але право '
@@ -2832,6 +2849,7 @@ def ai_classify(query: str, ranked: list[dict]) -> dict[int, str]:
                 'broad_service_evidence': _broad_psychosocial_service_evidence(
                     row.get('text') or '', _intent_concepts(query)[0])[:350],
                 'activity_with_broader_population': bool(row.get('_relaxed_subject')),
+                'broader_audiovisual_second_pass': bool(row.get('_film_second_pass')),
                 'deadline': row.get('_deadline') or 'постійно',
                 'deadline_note': row.get('_deadline_note') or '',
             })
@@ -2863,7 +2881,9 @@ def ai_classify(query: str, ranked: list[dict]) -> dict[int, str]:
                 if guard == 'reject':
                     continue
                 specific = facets.get('detail') or facets.get('custom_sector') or '' if facets else query
-                if not strict_topic_match(specific, row.get('text') or ''):
+                if (not strict_topic_match(specific, row.get('text') or '')
+                        and not (row.get('_film_second_pass')
+                                 and broader_film_funding_evidence(row.get('text') or ''))):
                     continue
                 if (facets and facets.get("audience") == "nonprofit"
                         and film_request(specific) and
@@ -2880,7 +2900,8 @@ def ai_classify(query: str, ranked: list[dict]) -> dict[int, str]:
                 positive = _funded_activity_text(row.get('text') or '')
                 target_explicit = (not beneficiaries or all(
                     _concept_hit(positive, SEARCH_CONCEPTS[k]) for k in beneficiaries))
-                if level == 'direct' and (guard == 'conditional' or
+                if level == 'direct' and (row.get('_film_second_pass')
+                                          or guard == 'conditional' or
                                           not row.get('_applicant_direct_evidence', True)
                                           or row.get('_broad_service_scope')
                                           or (services and not target_explicit)):
@@ -4686,6 +4707,16 @@ def make_one_catalog(state: dict, rows: list[dict], *, dry_run=False) -> bool:
         prefilter_qa = {}
         ranked = rank_posts(rows, query, keywords, facets=facets,
                             as_of_dt=now, diagnostics=prefilter_qa)
+        if not ranked and film_request(facets.get('detail') or facets.get('custom_sector') or query
+                                      if facets else query):
+            # Only after zero first-pass matches; do not weaken universal
+            # applicant, geography, deadline, or grant-only funding guards.
+            fallback_qa = {}
+            ranked = rank_posts(rows, query, keywords, facets=facets,
+                                as_of_dt=now, diagnostics=fallback_qa,
+                                film_second_pass=True)
+            prefilter_qa['second_pass'] = fallback_qa
+            prefilter_qa['second_pass_candidates'] = len(ranked)
         if not ranked:
             outcome = mark_no_results(state, entry, 'no_candidate')
             outcome["quality_diagnostics"] = {"prefilter": prefilter_qa,
@@ -4696,6 +4727,8 @@ def make_one_catalog(state: dict, rows: list[dict], *, dry_run=False) -> bool:
             state["queue"].pop(0)
             state.pop("ai_review", None)
             return True
+        keywords['film_second_pass'] = bool(
+            prefilter_qa.get('second_pass_candidates', 0))
         keywords['version'] = SEARCH_ENGINE_VERSION
         review = {
             "request_id": entry["id"],
@@ -4715,7 +4748,11 @@ def make_one_catalog(state: dict, rows: list[dict], *, dry_run=False) -> bool:
         title = review["title"]
         keywords = review["keywords"]
         # Validate the ranking again: expired/deleted posts cannot be published.
-        ranked = rank_posts(rows, query, keywords, facets=facets, as_of_dt=now)
+        if keywords.get('film_second_pass'):
+            ranked = rank_posts(rows, query, keywords, facets=facets,
+                                as_of_dt=now, film_second_pass=True)
+        else:
+            ranked = rank_posts(rows, query, keywords, facets=facets, as_of_dt=now)
 
 
 

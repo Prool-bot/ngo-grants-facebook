@@ -51,8 +51,12 @@ class MainMiniAppResultLinkTests(TestCase):
        state,now=datetime(2026,11,8,12,tzinfo=timezone.utc)))
   self.assertEqual(len(seen),1)
   self.assertEqual(seen[0][0],"sendMessage")
-  self.assertEqual(seen[0][1]["reply_markup"],
-      {"inline_keyboard":[[{"text":"🤖 Знайти гранти","url":VALID}]]})
+  buttons=seen[0][1]["reply_markup"]["inline_keyboard"]
+  self.assertGreaterEqual(len(buttons),1)
+  self.assertEqual(buttons[0],[{"text":"🤖 Знайти гранти","url":VALID}])
+  # Voluntary project support may appear in an additional row.
+  self.assertTrue(all(
+      item.get("url") != OLD for row in buttons for item in row))
   self.assertIn(VALID,seen[0][1]["text"])
   self.assertEqual(item["status"],"published")
   self.assertEqual(item["channel_url"],"https://t.me/ngo_grants/9009")
