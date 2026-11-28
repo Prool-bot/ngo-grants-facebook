@@ -1,0 +1,31 @@
+name: NGO Grants — publish approved article about search
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/publish-search-article-20261128.yml'
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: ngo-grants-article-20261128
+  cancel-in-progress: false
+jobs:
+  publish:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      NGO_GRANTS_AI_BOT_TOKEN: ${{ secrets.NGO_GRANTS_AI_BOT_TOKEN }}
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      NGO_ARTICLE_APPROVED: YES_PUBLISH_APPROVED_ARTICLE_20261128_ONCE
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - name: Validate exact approved article length
+        run: |
+          python -m py_compile scripts/publish_search_article_20261128.py
+          PYTHONPATH=scripts python -c 'from publish_search_article_20261128 import payload; payload()'
+      - name: Publish once and verify Telegram message
+        run: python scripts/publish_search_article_20261128.py
