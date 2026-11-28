@@ -86,9 +86,17 @@ def bot_token():
 
 def snapshot(message):
     rows=getattr(getattr(message,"reply_markup",None),"rows",[]) or []
+    def url_button(b):
+        # Telethon layer 229 wraps the URL in KeyboardInlineButton.type.
+        nested=getattr(b,"type",None)
+        if nested is not None and type(nested).__name__!="InlineButtonTypeUrl":
+            raise RuntimeError("Unsupported non-URL inline button: "+type(nested).__name__)
+        if getattr(b,"style",None) is not None:
+            raise RuntimeError("Existing styled inline button requires style-preserving mapping")
+        return {"text":b.text,"url":getattr(b,"url",None) or getattr(nested,"url",None)}
     return {"message_id":message.id,"text":message.message,
             "entities":[{"type":"text_link","url":e.url} for e in (message.entities or []) if getattr(e,"url",None)],
-            "reply_markup":{"inline_keyboard":[[{"text":b.text,"url":getattr(b,"url",None)} for b in r.buttons] for r in rows]}}
+            "reply_markup":{"inline_keyboard":[[url_button(b) for b in r.buttons] for r in rows]}}
 
 async def inspect_and_edit(token):
     from telethon import TelegramClient
