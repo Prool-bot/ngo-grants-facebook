@@ -69,7 +69,7 @@ class SecondPassTests(unittest.TestCase):
     def test_review_resume_records_second_pass(self):
         source = inspect.getsource(ai.make_one_catalog)
         self.assertIn("keywords['film_second_pass']", source)
-        self.assertIn("film_second_pass=bool(keywords.get('film_second_pass'))", source)
+        self.assertIn("if keywords.get('film_second_pass')", source)
 
 if __name__ == "__main__":
     unittest.main()
