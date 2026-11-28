@@ -16,6 +16,7 @@ V053_RECEIPT=Path(__file__).resolve().parents[1]/"launches/mini_app_v053_live_ve
 V054_RECEIPT=Path(__file__).resolve().parents[1]/"launches/mini_app_v054_live_version.json"
 V055_RECEIPT=Path(__file__).resolve().parents[1]/"launches/mini_app_v055_live_version.json"
 V056_RECEIPT=Path(__file__).resolve().parents[1]/"launches/mini_app_v056_live_version.json"
+V057_RECEIPT=Path(__file__).resolve().parents[1]/"launches/mini_app_v057_live_version.json"
 
 def expected_version()->str:
     if not RECEIPT.is_file():return ORIGINAL
@@ -69,4 +70,13 @@ def expected_version()->str:
         not isinstance(combined,str) or
         not re.fullmatch(r"[a-f0-9-]{36}",combined) or combined==waving):
         raise RuntimeError("Unexpected v0.5.6 per-choice hop and hand wave release receipt")
-    return combined
+    if not V057_RECEIPT.is_file():return combined
+    support=json.loads(V057_RECEIPT.read_text("utf-8"))
+    final=support.get("version_id")
+    if (support.get("status")!="deployed_verified" or
+        support.get("previous_version")!=combined or
+        support.get("script")!="ngo-grants-instant-bot" or
+        not isinstance(final,str) or
+        not re.fullmatch(r"[a-f0-9-]{36}",final) or final==combined):
+        raise RuntimeError("Unexpected v0.5.7 quiet support release receipt")
+    return final
