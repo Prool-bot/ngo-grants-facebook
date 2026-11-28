@@ -32,6 +32,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from zoneinfo import ZoneInfo
+from catalog_grant_only_gate import grant_only_eligible
 from catalog_guard_v57 import quality_status, clarification_questions
 from catalog_precision_guard import same_grant_round, supports_explicit_open_applicants
 from catalog_quality_v60 import (
@@ -2360,6 +2361,9 @@ def rank_posts(rows: list[dict], query: str, keywords: list[str] | dict,
         if same_day_deadline_expired(content, deadline, as_of_dt):
             qa['same_day_cutoff'] += 1
             continue
+        if not grant_only_eligible(content, facets):
+            qa['unverified_grant_funding'] += 1
+            continue
         if facets and facets.get("funding_format") == "grant_only":
             support_kind = funding_profile(content)[0]
             if (opportunity_kind(content)[0] == "conference_cfp"
@@ -2853,6 +2857,8 @@ def ai_classify(query: str, ranked: list[dict]) -> dict[int, str]:
                     continue
                 facets = plan.get('facets') if isinstance(plan, dict) else None
                 guard = quality_status(row.get('text') or '', facets)
+                if not grant_only_eligible(row.get('text') or '', facets):
+                    continue
                 if guard == 'reject':
                     continue
                 specific = facets.get('detail') or facets.get('custom_sector') or '' if facets else query
