@@ -18,6 +18,9 @@ jobs:
     env:
       NGO_GRANTS_AI_BOT_TOKEN: ${{ secrets.NGO_GRANTS_AI_BOT_TOKEN }}
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      TELEGRAM_API_ID: ${{ secrets.TELEGRAM_API_ID }}
+      TELEGRAM_API_HASH: ${{ secrets.TELEGRAM_API_HASH }}
+      TELEGRAM_SESSION: ${{ secrets.TELEGRAM_SESSION }}
       NGO_PINNED_SUPPORT_APPROVED: 'YES_ADD_SUPPORT_ROW_3813'
     steps:
       - uses: actions/checkout@v4
@@ -28,5 +31,7 @@ jobs:
           python -m py_compile scripts/add_pinned_support.py ngo_grants_ai.py
           python -m unittest discover -s tests -p 'test_public_support.py' -v
           python -m unittest discover -s tests -p 'test_ngo_grants_v59_navigation.py' -v
+      - name: Install existing Telegram read-only verification client
+        run: python -m pip install telethon==1.45.0
       - name: Edit only reply markup of existing pinned post
         run: python scripts/add_pinned_support.py
