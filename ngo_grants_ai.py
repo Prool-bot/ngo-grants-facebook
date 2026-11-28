@@ -4727,6 +4727,8 @@ def make_one_catalog(state: dict, rows: list[dict], *, dry_run=False) -> bool:
             state["queue"].pop(0)
             state.pop("ai_review", None)
             return True
+        keywords['film_second_pass'] = bool(
+            prefilter_qa.get('second_pass_candidates', 0))
         keywords['version'] = SEARCH_ENGINE_VERSION
         review = {
             "request_id": entry["id"],
@@ -4746,7 +4748,9 @@ def make_one_catalog(state: dict, rows: list[dict], *, dry_run=False) -> bool:
         title = review["title"]
         keywords = review["keywords"]
         # Validate the ranking again: expired/deleted posts cannot be published.
-        ranked = rank_posts(rows, query, keywords, facets=facets, as_of_dt=now)
+        ranked = rank_posts(rows, query, keywords, facets=facets,
+                            as_of_dt=now,
+                            film_second_pass=bool(keywords.get('film_second_pass')))
 
 
 
