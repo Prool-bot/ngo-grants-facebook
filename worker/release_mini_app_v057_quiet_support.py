@@ -63,10 +63,9 @@ def check_new_html(gateway: str, version: str | None = None):
         )) or
         'id="greet"' in text):
         raise RuntimeError("Candidate UI must hop and wave on each choice with no greeting button")
-    for route in ("/mini-app/direct","/mini-app"):
-        code, headers, raw=request(gateway,route,version)
-        html=raw.decode("utf-8","replace")
-        if (code!=200 or html.count('id="ngoQuietSupportLink"')!=1 or
+    from patch_quiet_support import native_public_html
+    for html in (text,native_public_html(gateway,version)):
+        if (html.count('id="ngoQuietSupportLink"')!=1 or
             'href="https://donatello.to/NGO_Grants"' not in html):
             raise RuntimeError("Quiet support link missing from candidate UI")
     print("V057_QUIET_SUPPORT_LINK_VERIFIED=True")

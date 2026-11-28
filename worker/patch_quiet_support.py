@@ -117,9 +117,27 @@ def patch(source: str, direct_live: str, native_live: str) -> str:
         raise RuntimeError("Quiet support patch not unique")
     return out
 
+def native_public_html(gateway: str, version: str | None = None) -> str:
+    """Use the existing successful native Mini App smoke request headers."""
+    import urllib.request
+    import urllib.error
+    from deploy_worker_mini_app_fop_v04 import SCRIPT
+    if not gateway.startswith("https://") or ".workers.dev" not in gateway:
+        raise RuntimeError("Approved production Worker origin required")
+    headers={"Accept":"text/html","User-Agent":"NGOGrantsMiniAppRelease/1.0"}
+    if version:
+        headers["Cloudflare-Workers-Version-Overrides"]=f'{SCRIPT}="{version}"'
+    request=urllib.request.Request(gateway.rstrip("/")+"/mini-app",headers=headers,method="GET")
+    try:
+        with urllib.request.urlopen(request,timeout=20) as response:
+            if response.status!=200 or "text/html" not in response.headers.get("Content-Type",""):
+                raise RuntimeError("Native Mini App route unhealthy")
+            return response.read(120000).decode("utf-8")
+    except urllib.error.HTTPError as exc:
+        raise RuntimeError("Native Mini App smoke HTTP "+str(exc.code)) from None
+
 def main():
     from patch_mini_app_v054_ui import current_public_html
-    import urllib.request
     if len(sys.argv)!=3 or os.getenv("GITHUB_ACTIONS")!="true" or os.getenv("GITHUB_REF")!="refs/heads/main":
         raise RuntimeError("Main-only approved Worker staging")
     root=Path(os.environ["RUNNER_TEMP"]).resolve()
@@ -128,11 +146,7 @@ def main():
         raise RuntimeError("Worker files must stay in runner temp")
     gateway=os.environ["NGO_BOT_GATEWAY_URL"].rstrip("/")
     direct=current_public_html(gateway)
-    request=urllib.request.Request(gateway+"/mini-app",headers={"cache-control":"no-store"})
-    with urllib.request.urlopen(request,timeout=30) as response:
-        if response.status!=200 or "text/html" not in response.headers.get("Content-Type",""):
-            raise RuntimeError("Native Mini App route unhealthy")
-        native=response.read(120000).decode("utf-8")
+    native=native_public_html(gateway)
     result=patch(before.read_text("utf-8"),direct,native)
     fd=os.open(after,os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o600)
     with os.fdopen(fd,"w",encoding="utf-8") as f:f.write(result)
