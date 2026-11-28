@@ -1,0 +1,24 @@
+{
+  "status": "verified_pinned_two_buttons",
+  "operation": "editMessageReplyMarkup",
+  "channel": "@ngo_grants",
+  "message_id": 3813,
+  "buttons": {
+    "inline_keyboard": [
+      [
+        {
+          "text": "🤖 Знайти гранти",
+          "url": "https://t.me/ngogratsAI_bot?startapp=ngo_grants"
+        }
+      ],
+      [
+        {
+          "text": "❤️ Підтримати NGO Grants",
+          "url": "https://donatello.to/NGO_Grants"
+        }
+      ]
+    ]
+  },
+  "verified_at": "2026-11-28T09:09:34.775548+00:00",
+  "run_id": "46129117279"
+}
