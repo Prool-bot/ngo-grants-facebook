@@ -6,6 +6,7 @@ search the archive, send Telegram messages, or alter the stored order queue.
 from __future__ import annotations
 
 from datetime import date, datetime
+from catalog_grant_only_gate import grant_only_eligible
 from catalog_guard_v57 import quality_status
 from catalog_precision_guard import supports_explicit_open_applicants, same_grant_round
 from catalog_quality_v60 import (effective_entry_deadline, same_day_deadline_expired,
@@ -52,6 +53,10 @@ def partition_reviewed_rows(rows: list[dict], facets: dict | None,
             continue
         if facets is not None and not supports_explicit_open_applicants(
                 row.get("text") or "", facets.get("detail") or ""):
+            continue
+        # Hard funding gate: do not publish a non-grant or an unverified
+        # funding mechanism even in the conditional grant-only PDF.
+        if not grant_only_eligible(row.get("text") or "", facets):
             continue
         guard = quality_status(row.get("text") or "", facets) if facets is not None else "direct"
         if guard == "reject":
