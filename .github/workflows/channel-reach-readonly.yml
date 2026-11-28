@@ -1,0 +1,64 @@
+name: NGO Grants — read-only channel reach
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/channel-reach-readonly.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: telegram-archive
+  cancel-in-progress: false
+jobs:
+  reach:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      TELEGRAM_API_ID: ${{ secrets.TELEGRAM_API_ID }}
+      TELEGRAM_API_HASH: ${{ secrets.TELEGRAM_API_HASH }}
+      TELEGRAM_SESSION: ${{ secrets.TELEGRAM_SESSION }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - run: python -m pip install telethon==1.45.0
+      - name: Read aggregate channel analytics without marking messages viewed
+        run: |
+          python - <<'PY'
+          import asyncio, os, json, statistics
+          from datetime import datetime, timedelta, timezone
+          from collections import defaultdict
+          from zoneinfo import ZoneInfo
+          from telethon import TelegramClient, functions, types
+          from telethon.sessions import StringSession
+          async def main():
+              async with TelegramClient(StringSession(os.environ['TELEGRAM_SESSION'].strip()),int(os.environ['TELEGRAM_API_ID']),os.environ['TELEGRAM_API_HASH'].strip(),receive_updates=False) as c:
+                  if not await c.is_user_authorized(): raise RuntimeError('Read-only session not authorized')
+                  channel=await c.get_entity('ngo_grants')
+                  if channel.username!='ngo_grants': raise RuntimeError('Wrong channel')
+                  now=datetime.now(timezone.utc)
+                  full=await c(functions.channels.GetFullChannelRequest(channel))
+                  print('CHANNEL_REACH_SNAPSHOT='+json.dumps({'at':now.isoformat(),'subscribers':full.full_chat.participants_count}))
+                  groups=defaultdict(list)
+                  recent=[]
+                  async for m in c.iter_messages(channel,limit=3000):
+                      if m.date<now-timedelta(days=8):break
+                      if m.views is None:continue
+                      groups[m.date.astimezone(ZoneInfo('Europe/Kyiv')).date().isoformat()].append(m.views)
+                      if now-timedelta(hours=48)<=m.date<now-timedelta(hours=24):recent.append(m.views)
+                  print('POST_COHORTS='+json.dumps({d:{'posts':len(v),'current_sum':sum(v),'current_average':round(statistics.mean(v),1),'median':statistics.median(v),'max':max(v)} for d,v in sorted(groups.items())}))
+                  print('POSTS_AGED_24_48H='+json.dumps({'posts':len(recent),'average_current_views':round(statistics.mean(recent),1) if recent else None,'max':max(recent) if recent else None}))
+                  try:
+                      s=await c(functions.stats.GetBroadcastStatsRequest(channel))
+                      print('TELEGRAM_OFFICIAL='+json.dumps({'period_min':str(s.period.min_date),'period_max':str(s.period.max_date),'views_per_post_current':s.views_per_post.current,'views_per_post_previous':s.views_per_post.previous}))
+                      for name in ['views_by_source_graph','interactions_graph']:
+                          graph=getattr(s,name,None)
+                          if isinstance(graph,types.StatsGraphAsync):graph=await c(functions.stats.LoadAsyncGraphRequest(graph.token))
+                          if isinstance(graph,types.StatsGraph):
+                              d=json.loads(graph.json.data)
+                              print('GRAPH_'+name+'='+json.dumps({'names':d.get('names'),'types':d.get('types'),'columns':[col[:1]+col[-10:] for col in d.get('columns',[])]},ensure_ascii=False))
+                          else: print('GRAPH_'+name+' unavailable '+type(graph).__name__)
+                  except Exception as exc:
+                      print('OFFICIAL_STATS_UNAVAILABLE='+type(exc).__name__)
+          asyncio.run(main())
+          PY
