@@ -22,7 +22,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: ngo-grants-worker-production-deploy
+  group: ${{ github.event_name == 'pull_request' && format('ngo-quiet-support-pr-{0}', github.event.pull_request.number) || 'ngo-grants-worker-production-deploy' }}
   cancel-in-progress: false
 
 jobs:
