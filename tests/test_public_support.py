@@ -16,6 +16,10 @@ class PublicSupportTests(unittest.TestCase):
         self.assertEqual(pinned.expected_markup()["inline_keyboard"][:1],old["inline_keyboard"])
         message["reply_markup"]=pinned.expected_markup()
         self.assertTrue(pinned.validate_post(message,after=True))
+        message["reply_markup"]={"inline_keyboard":[[{"text":"Інша назва","url":pinned.MAIN_LINK}],[{"text":"Додатково","url":"https://t.me/ngo_grants"}]]}
+        planned=pinned.plan_markup(message)
+        self.assertEqual(planned["inline_keyboard"][:-1],message["reply_markup"]["inline_keyboard"])
+        self.assertEqual(planned["inline_keyboard"][-1][0]["url"],pinned.SUPPORT_URL)
         message["message_id"]=0
         with self.assertRaises(RuntimeError):pinned.validate_post(message)
 

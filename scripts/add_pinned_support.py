@@ -20,18 +20,28 @@ def expected_markup():
     return {"inline_keyboard":[[{"text":LABEL,"url":MAIN_LINK}],
                                 [{"text":SUPPORT_LABEL,"url":SUPPORT_URL}]]}
 
-def validate_post(message, *, after=False, post_id=POST_ID):
+def plan_markup(message, *, post_id=POST_ID):
     if (message.get("message_id")!=post_id or message.get("text")!=LABEL or
         not any(e.get("type")=="text_link" and e.get("url")==MAIN_LINK for e in message.get("entities",[]))):
         raise RuntimeError("Pinned post text or launch link changed; no edit")
-    markup=message.get("reply_markup")
-    allowed=[expected_markup()] if after else [{"inline_keyboard":[[{"text":LABEL,"url":MAIN_LINK}]]},expected_markup()]
-    if markup is not None and markup not in allowed:
-        raise RuntimeError("Unexpected pinned buttons; no overwrite")
-    return markup==expected_markup()
+    rows=(message.get("reply_markup") or {}).get("inline_keyboard",[])
+    if not isinstance(rows,list) or any(not isinstance(r,list) or not r for r in rows):
+        raise RuntimeError("Invalid current pinned markup")
+    if any(set(b)!={"text","url"} or not isinstance(b["text"],str) or not isinstance(b["url"],str)
+           or not b["url"].startswith("https://") for r in rows for b in r):
+        raise RuntimeError("Unsupported existing button type; no overwrite")
+    rows=[list(r) for r in rows]
+    if not any(b["url"]==MAIN_LINK for r in rows for b in r):
+        rows.insert(0,[{"text":LABEL,"url":MAIN_LINK}])
+    if not any(b["url"]==SUPPORT_URL for r in rows for b in r):
+        rows.append([{"text":SUPPORT_LABEL,"url":SUPPORT_URL}])
+    return {"inline_keyboard":rows}
 
-def edit(token, post_id):
-    payload={"chat_id":CHANNEL,"message_id":post_id,"reply_markup":expected_markup()}
+def validate_post(message, *, after=False, post_id=POST_ID):
+    return message.get("reply_markup")==plan_markup(message,post_id=post_id)
+
+def edit(token, post_id, markup):
+    payload={"chat_id":CHANNEL,"message_id":post_id,"reply_markup":markup}
     req=urllib.request.Request("https://api.telegram.org/bot"+token+"/editMessageReplyMarkup",
         data=json.dumps(payload,ensure_ascii=False).encode("utf-8"),method="POST",
         headers={"Content-Type":"application/json","User-Agent":"NGOGrantsPinnedSupport/1.0"})
@@ -45,8 +55,9 @@ def edit(token, post_id):
     if result.get("ok") is not True or not isinstance(result.get("result"),dict):
         raise RuntimeError("Pinned edit unconfirmed")
     msg=result["result"]
-    if (msg.get("chat",{}).get("username")!="ngo_grants" or not validate_post(msg,after=True,post_id=post_id)):
-        raise RuntimeError("Telegram did not confirm both buttons")
+    if (msg.get("chat",{}).get("username")!="ngo_grants" or not validate_post(msg,after=True,post_id=post_id)
+        or msg.get("reply_markup")!=markup):
+        raise RuntimeError("Telegram did not confirm preserved buttons and support")
 
 def bot_token():
     if (os.getenv("GITHUB_ACTIONS")!="true" or os.getenv("GITHUB_REF")!="refs/heads/main" or
@@ -91,14 +102,18 @@ async def inspect_and_edit(token):
             raise RuntimeError("No unique pinned Find Grants shortcut; no Telegram write")
         msg=candidates[0]
         post_id=msg.id
-        already=validate_post(snapshot(msg),post_id=post_id)
+        original=snapshot(msg)
+        markup=plan_markup(original,post_id=post_id)
+        already=original["reply_markup"]==markup
         print("EXACT_PINNED_SHORTCUT_VERIFIED="+str(post_id))
         if not already:
-            edit(token,post_id)
+            edit(token,post_id,markup)
         confirmed=await client.get_messages("ngo_grants",ids=post_id)
         if not confirmed or not confirmed.pinned or not validate_post(snapshot(confirmed),after=True,post_id=post_id):
             raise RuntimeError("Independent pinned markup verification failed")
-        return post_id
+        if snapshot(confirmed)["reply_markup"]!=markup:
+            raise RuntimeError("Existing buttons not preserved")
+        return post_id,markup
 
 def main():
     if os.getenv("NGO_PINNED_SUPPORT_APPROVED")!="YES_ADD_SUPPORT_ROW_3813":
@@ -112,9 +127,9 @@ def main():
         print("Pinned support receipt already exists; no repeat edit")
         return
     if status!=404:raise RuntimeError("Cannot read support receipt")
-    post_id=asyncio.run(inspect_and_edit(token))
+    post_id,markup=asyncio.run(inspect_and_edit(token))
     record={"status":"verified_pinned_two_buttons","operation":"editMessageReplyMarkup",
-            "channel":CHANNEL,"message_id":post_id,"buttons":expected_markup(),
+            "channel":CHANNEL,"message_id":post_id,"buttons":markup,
             "verified_at":datetime.now(timezone.utc).isoformat(),"run_id":os.getenv("GITHUB_RUN_ID")}
     status,_=github_api("PUT","contents/"+RECEIPT,{"branch":"main","message":"Verify existing pinned post support row",
         "content":b64encode(json.dumps(record,ensure_ascii=False,indent=2).encode()).decode()})
